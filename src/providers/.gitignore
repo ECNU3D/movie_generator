@@ -1,0 +1,23 @@
+# Local configuration with API keys (DO NOT COMMIT)
+config.local.yaml
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test outputs
+*.mp4
+*.webm
+test_output/

@@ -1,0 +1,114 @@
+# Video Generation Providers Configuration
+# Copy this file to config.local.yaml and fill in your API keys
+
+# Global settings
+global:
+  default_provider: "kling"  # kling, tongyi, jimeng, hailuo
+  timeout: 300  # seconds to wait for video generation
+  retry_attempts: 3
+  retry_delay: 5  # seconds between retries
+
+# Provider configurations
+providers:
+  kling:
+    enabled: true
+    name: "Kling AI"
+    base_url: "https://api-beijing.klingai.com"
+    # Authentication (JWT based)
+    access_key: ""  # Your Kling Access Key
+    secret_key: ""  # Your Kling Secret Key
+    # Model settings
+    # Available models:
+    #   - kling-video-o1: Omni-Video O1 - 多功能视频生成模型
+    model: "kling-video-o1"
+    # Default parameters
+    defaults:
+      duration: "5"  # seconds (5 or 10 for text/image-to-video, 3-10 for reference)
+      resolution: "1080p"
+      aspect_ratio: "16:9"  # 16:9, 9:16, 1:1
+      mode: "std"  # std (standard) or pro (high quality)
+
+  tongyi:
+    enabled: true
+    name: "Tongyi Wanxiang"
+    base_url: "https://dashscope.aliyuncs.com/api/v1"
+    # Authentication (Bearer token)
+    api_key: ""  # Your Dashscope API Key
+    # Model settings
+    # Available models:
+    #   - wan2.6-t2v: 万相2.6（有声视频）- 支持多镜头叙事、自动配音 (推荐)
+    #   - wan2.5-t2v-preview: 万相2.5 preview（有声视频）
+    #   - wan2.2-t2v-plus: 万相2.2专业版（无声视频）
+    #   - wanx2.1-t2v-turbo: 万相2.1极速版（无声视频）
+    #   - wanx2.1-t2v-plus: 万相2.1专业版（无声视频）
+    #   - wan2.6-i2v: 万相2.6 图生视频（有声视频）
+    model: "wan2.6-t2v"
+    # Default parameters
+    defaults:
+      duration: 5
+      resolution: "720P"
+      prompt_extend: true
+      audio: true
+
+  jimeng:
+    enabled: true
+    name: "JiMeng AI"
+    base_url: "https://visual.volcengineapi.com"
+    # Authentication (Volcengine signature)
+    access_key: ""  # Your Volcengine Access Key ID
+    secret_key: ""  # Your Volcengine Secret Access Key
+    region: "cn-north-1"
+    service: "cv"
+    # Model settings (req_key)
+    # Available models:
+    #   - jimeng_t2v_v30: 视频生成3.0 (720P) - 文生视频
+    #   - jimeng_t2v_v30_1080p: 视频生成3.0 (1080P) - 文生视频
+    #   - jimeng_t2v_v30_pro: 视频生成3.0 Pro - 文生视频，多镜头叙事
+    #   - jimeng_ti2v_v30_pro: 视频生成3.0 Pro - 图生视频（首帧）
+    model: "jimeng_t2v_v30_1080p"
+    # Default parameters
+    defaults:
+      duration: 5  # seconds (5 or 10)
+      aspect_ratio: "16:9"  # 16:9, 9:16, 4:3, 3:4, 1:1
+
+  hailuo:
+    enabled: true
+    name: "Hailuo AI (MiniMax)"
+    base_url: "https://api.minimaxi.com"
+    # Authentication (Bearer token)
+    api_key: ""  # Your MiniMax API Key
+    # Model settings
+    # Available models (Text-to-Video):
+    #   - MiniMax-Hailuo-2.3: 最新模型，支持768P/1080P，6/10秒，运镜控制
+    #   - MiniMax-Hailuo-02: 支持768P/1080P，6/10秒，运镜控制
+    #   - T2V-01-Director: 导演模式，720P，6秒
+    #   - T2V-01: 基础模型，720P，6秒
+    # Available models (Image-to-Video):
+    #   - MiniMax-Hailuo-2.3: 图生视频，支持768P/1080P
+    #   - MiniMax-Hailuo-2.3-Fast: 快速图生视频
+    #   - MiniMax-Hailuo-02: 图生视频，支持首尾帧
+    #   - I2V-01-Director: 导演模式图生视频
+    #   - I2V-01-live: 实时图生视频
+    #   - I2V-01: 基础图生视频
+    # Subject Reference:
+    #   - S2V-01: 主体参考视频生成
+    model: "MiniMax-Hailuo-2.3"
+    # Default parameters
+    defaults:
+      duration: 6  # seconds (6 or 10)
+      resolution: "768P"  # 720P, 768P, 1080P (depends on model)
+
+# Test prompts for validation
+test_prompts:
+  text_to_video:
+    - prompt: "A cute orange cat yawning in the sunlight, slow motion, cinematic quality"
+      description: "Simple animal scene"
+    - prompt: "Ocean waves crashing on a beach at sunset, golden hour lighting, 4K"
+      description: "Nature scene"
+    - prompt: "A young woman walking through a cherry blossom garden, spring, soft lighting"
+      description: "Human scene"
+
+  image_to_video:
+    - image_url: ""  # Fill in a test image URL
+      prompt: "The subject turns head and smiles gently"
+      description: "Portrait animation"

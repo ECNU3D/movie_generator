@@ -1,0 +1,16 @@
+# Requirements for video generation providers
+
+# HTTP requests
+requests>=2.28.0
+
+# JWT for Kling AI authentication
+PyJWT>=2.8.0
+
+# YAML configuration
+PyYAML>=6.0
+
+# Optional: Volcengine SDK for JiMeng (recommended over manual signing)
+# volcengine-python-sdk>=1.0.0
+
+# Optional: Dashscope SDK for Tongyi (alternative to HTTP API)
+# dashscope>=1.14.0

@@ -1,0 +1,76 @@
+模型名称（model）
+模型简介
+输出视频规格
+wan2.6-t2v 推荐
+万相2.6（有声视频）
+新增多镜头叙事能力
+支持音频能力：支持自动配音，或传入自定义音频文件
+分辨率档位：720P、1080P
+视频时长：5秒、10秒、15秒
+固定规格：30fps、MP4 (H.264编码) 
+wan2.5-t2v-preview 推荐
+万相2.5 preview（有声视频）
+新增音频能力：支持自动配音，或传入自定义音频文件
+分辨率档位：480P、720P、1080P
+视频时长：5秒、10秒
+固定规格：30fps、MP4 (H.264编码) 
+wan2.2-t2v-plus
+万相2.2专业版（无声视频）
+较2.1模型稳定性与成功率提升，速度提升50%
+分辨率档位：480P、1080P
+视频时长：5秒
+固定规格：30fps、MP4 (H.264编码) 
+wanx2.1-t2v-turbo
+万相2.1极速版（无声视频）
+分辨率档位：480P、720P
+视频时长：5秒
+固定规格：30fps、MP4 (H.264编码) 
+wanx2.1-t2v-plus
+万相2.1专业版（无声视频）
+分辨率档位：720P
+视频时长：5秒
+固定规格：30fps、MP4 (H.264编码) 
+
+curl --location 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis' \
+    -H 'X-DashScope-Async: enable' \
+    -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
+    -H 'Content-Type: application/json' \
+    -d '{
+    "model": "wan2.6-i2v",
+    "input": {
+        "prompt": "一幅都市奇幻艺术的场景。一个充满动感的涂鸦艺术角色。一个由喷漆所画成的少年，正从一面混凝土墙上活过来。他一边用极快的语速演唱一首英文rap，一边摆着一个经典的、充满活力的说唱歌手姿势。场景设定在夜晚一个充满都市感的铁路桥下。灯光来自一盏孤零零的街灯，营造出电影般的氛围，充满高能量和惊人的细节。视频的音频部分完全由他的rap构成，没有其他对话或杂音。",
+        "img_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/wpimhv/rap.png",
+        "audio_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/ozwpvi/rap.mp3"
+    },
+    "parameters": {
+        "resolution": "720P",
+        "prompt_extend": true,
+        "duration": 10,
+        "audio": true,
+        "shot_type":"multi"
+    }
+}'
+
+curl --location --request GET 'https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}' \
+--header "Authorization: Bearer $DASHSCOPE_API_KEY"
+
+curl --location 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis' \
+    -H 'X-DashScope-Async: enable' \
+    -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
+    -H 'Content-Type: application/json' \
+    -d '{
+    "model": "wan2.6-t2v",
+    "input": {
+        "prompt": "一幅史诗级可爱的场景。一只小巧可爱的卡通小猫将军，身穿细节精致的金色盔甲，头戴一个稍大的头盔，勇敢地站在悬崖上。他骑着一匹虽小但英勇的战马，说：”青海长云暗雪山，孤城遥望玉门关。黄沙百战穿金甲，不破楼兰终不还。“。悬崖下方，一支由老鼠组成的、数量庞大、无穷无尽的军队正带着临时制作的武器向前冲锋。这是一个戏剧性的、大规模的战斗场景，灵感来自中国古代的战争史诗。远处的雪山上空，天空乌云密布。整体氛围是“可爱”与“霸气”的搞笑和史诗般的融合。"
+    },
+    "parameters": {
+        "size": "1280*720",
+        "prompt_extend": true,
+        "duration": 10,
+        "audio": true,
+        "shot_type":"multi"
+    }
+}'
+
+curl --location --request GET 'https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}' \
+--header "Authorization: Bearer $DASHSCOPE_API_KEY"
