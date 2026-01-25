@@ -1,171 +1,130 @@
-# AI电影生成器 - 待收集信息与待办事项
+# AI电影生成器 - 待办事项与进度追踪
 
 > 本文档记录项目开发所需的待收集信息、待确认事项和开发计划。
 
 ---
 
-## 1. 待收集信息清单
+## 1. 已完成功能
 
-### 1.1 API文档与密钥（必需）
+### 1.1 故事生成器 (Story Generator) ✅
 
-#### 视频生成平台
-- [ ] **可灵 (Kling AI)**
-  - API文档链接：
-  https://app.klingai.com/cn/dev/document-api/apiReference/commonInfo
-  https://app.klingai.com/cn/dev/document-api/apiReference/rateLimits
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/skillsMap
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/OmniVideo
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/textToVideo
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/imageToVideo
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/multiImageToVideo
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/motionControl
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/multimodalToVideo
-  https://app.klingai.com/cn/dev/document-api/apiReference/model/videoDuration
-  - API Key
-  - 支持的功能列表（图生视频、文生视频、主体参考等）
-  - 定价信息
+基于 Streamlit + Gemini 的独立故事剧本生成工具，已实现功能：
 
-- [ ] **通义万相**
-  - API文档链接：https://bailian.console.aliyun.com/cn-beijing/?tab=api#/api
-  - API Key (阿里云账号)
-  - 支持的功能列表
-  - 定价信息
+- [x] 故事创意生成（随机/自定义）
+- [x] 故事大纲生成（标题、简介、角色、剧集）
+- [x] 人物数量自定义（1-10个）
+- [x] 人物知识库（角色设定、重大经历追踪）
+- [x] 分镜脚本生成
+- [x] 分镜密度控制（少/中/多/自定义）
+- [x] 剧集大纲编辑（直接编辑/AI辅助）
+- [x] 一致性检查与自动修复
+- [x] 编辑历史（撤销/重做）
+- [x] 视频提示词生成（支持四大平台）
+- [x] 图生视频提示词（首帧/首尾帧）
+- [x] 一键导出大纲（Markdown格式）
 
-- [ ] **即梦AI**
-  - API文档链接：https://www.volcengine.com/docs/85621/1544716?lang=zh
-  - API Key
-  - 支持的功能列表
-  - 定价信息
+### 1.2 视频平台文档 ✅
 
-- [ ] **海螺视频 (Hailuo AI)**
-  - API文档链接：https://platform.minimaxi.com/docs/api-reference/video-generation-t2v
-  - API Key
-  - 支持的功能列表
-  - 定价信息
+已整理四大视频生成平台的 API 文档：
 
-#### LLM平台
-- [ ] **阿里千问 (Qwen)**
-  - API文档链接
-  - API Key
-
-- [ ] **字节豆包 (Doubao)**
-  - API文档链接
-  - API Key
-
-- [ ] **智谱AI (Zhipu)**
-  - API文档链接
-  - API Key
-
-- [ ] **OpenAI**
-  - API Key
-
-- [ ] **Google Gemini**
-  - API Key
-
-### 1.2 需要确认的技术细节
-
-| 问题 | 影响范围 | 优先级 |
-|------|----------|--------|
-| 各平台视频生成的最大时长限制？ | 分镜拆分策略 | 高 |
-| 各平台是否支持主体参考？支持几个主体？ | 角色一致性方案 | 高 |
-| 各平台API的并发限制和QPS？ | 任务调度设计 | 中 |
-| 各平台生成视频的分辨率选项？ | 前端配置项 | 中 |
-| 各平台API的回调机制（轮询/Webhook）？ | 任务状态管理 | 中 |
-
-### 1.3 业务需求确认
-
-| 问题 | 说明 |
-|------|------|
-| 目标用户是谁？ | 个人创作者/小团队/企业？影响功能复杂度 |
-| 是否需要多语言支持？ | 影响前端国际化设计 |
-| 是否需要用户认证系统？ | 单用户/多用户模式 |
-| 视频成片的导出格式要求？ | MP4/MOV/其他 |
-| 是否需要配音/字幕功能？ | 后期可以扩展TTS |
-| 预算范围？ | 影响云服务选择 |
+- [x] **可灵 (Kling AI)** - 完整API文档，支持文生视频、图生视频、首尾帧、主体参考
+- [x] **通义万相 (Tongyi)** - 完整API文档，支持 wan2.6 系列模型
+- [x] **即梦AI (Jimeng)** - 完整API文档，支持 Pro 版多镜头叙事
+- [x] **海螺视频 (Hailuo)** - 完整API文档，支持首尾帧生成视频
 
 ---
 
-## 2. 开发计划建议
+## 2. 待开发功能
 
-### Phase 1: 基础架构（MVP）
-1. 项目脚手架搭建（Next.js + FastAPI）
-2. 数据库设计与实现
-3. 基础API框架
-4. 简单的项目管理功能
+### 2.1 视频平台接入（高优先级）
 
-### Phase 2: AI接入
-1. 统一AI接口抽象层设计
-2. 接入1-2个LLM平台
-3. 接入1-2个视频生成平台
-4. 基础的剧本生成功能
+- [ ] 实现统一的 Provider 抽象层
+- [ ] 接入可灵 API
+- [ ] 接入通义万相 API
+- [ ] 接入即梦 API
+- [ ] 接入海螺 API
+- [ ] 实现任务状态轮询/回调
 
-### Phase 3: 核心功能
-1. 剧本编辑器
-2. 角色管理
-3. 分镜生成与管理
-4. 视频生成流程
+### 2.2 核心功能扩展
 
-### Phase 4: 完善与优化
-1. 更多平台接入
-2. 角色一致性优化
-3. 素材管理
-4. 视频合成与导出
+- [ ] 角色参考图生成（文生图）
+- [ ] 角色多角度参考图
+- [ ] 主体参考一致性方案
+- [ ] 分镜图片预览生成
+- [ ] 视频生成任务管理
+- [ ] 视频片段拼接
 
----
+### 2.3 系统架构（中优先级）
 
-## 3. 问题与建议
+- [ ] FastAPI 后端（替代 Streamlit 的纯前端方案）
+- [ ] Next.js 前端
+- [ ] 异步任务队列（Celery + Redis）
+- [ ] 用户认证系统
+- [ ] 成本统计与预算控制
 
-### 3.1 架构建议
+### 2.4 素材管理
 
-1. **统一接口层**：建议设计一个Provider抽象层，所有AI服务提供商实现同一接口，便于扩展和切换。
-
-2. **异步任务处理**：视频生成通常需要几十秒到几分钟，建议使用Celery+Redis处理异步任务，提供实时进度反馈。
-
-3. **成本控制**：建议增加用量统计和预算控制功能，避免API调用费用失控。
-
-### 3.2 待讨论问题
-
-1. **视频拼接方案**：各平台生成的视频片段如何拼接成完整影片？
-   - 方案A：使用FFmpeg在后端处理
-   - 方案B：前端使用WebCodecs API
-   - 方案C：接入专业视频编辑API
-
-2. **音频处理**：
-   - 是否需要AI配音功能？
-   - 是否需要背景音乐生成？
-   - 是否需要音效库？
-
-3. **存储方案**：
-   - 生成的视频和图片如何存储？
-   - 是否需要CDN加速？
-   - 存储容量预估？
-
-4. **部署环境**：
-   - 本地部署还是云部署？
-   - 是否需要Docker化？
-   - 预期的并发用户数？
+- [ ] 图片素材库
+- [ ] 视频片段库
+- [ ] 音频素材库
+- [ ] 标签与分类系统
 
 ---
 
-## 附录
+## 3. 待确认事项
 
-### A. 相关资源链接
+### 3.1 技术细节
 
-| 平台 | 官网 | API文档 |
-|------|------|---------|
-| 可灵 | https://app.klingai.com/cn/ | 待补充 |
-| 通义万相 | https://tongyi.aliyun.com/wanxiang | 待补充 |
-| 即梦AI | https://jimeng.jianying.com/ai-tool/home/ | 待补充 |
-| 海螺视频 | https://hailuoai.com | 待补充 |
-| Elser AI | https://www.elser.ai/zh/home | 参考产品 |
+| 问题 | 状态 | 备注 |
+|------|------|------|
+| 各平台视频生成的最大时长限制 | ✅ 已确认 | 见 providers 文档 |
+| 各平台是否支持主体参考 | ✅ 已确认 | 可灵、海螺支持 |
+| 各平台API的并发限制和QPS | ✅ 已确认 | 见 providers 文档 |
+| 各平台生成视频的分辨率选项 | ✅ 已确认 | 720P/1080P |
+| 视频拼接方案选择 | ❓ 待确认 | FFmpeg vs WebCodecs |
 
-### B. 技术文档参考
-- Next.js: https://nextjs.org/docs
-- FastAPI: https://fastapi.tiangolo.com/
-- SQLite: https://www.sqlite.org/docs.html
-- Celery: https://docs.celeryq.dev/
+### 3.2 业务需求
+
+| 问题 | 状态 | 说明 |
+|------|------|------|
+| 目标用户群体 | ❓ 待确认 | 个人创作者/小团队/企业 |
+| 是否需要多语言支持 | ❓ 待确认 | 影响国际化设计 |
+| 视频成片导出格式 | ❓ 待确认 | MP4/MOV |
+| 是否需要配音/字幕功能 | ❓ 待确认 | 可后期扩展 TTS |
 
 ---
 
-*文档版本: 1.0*
-*最后更新: 2026-01-18*
+## 4. 开发计划
+
+### Phase 1: 故事生成器 ✅ 已完成
+- 基于 Streamlit + Gemini 的 MVP
+- 故事大纲、角色、分镜生成
+- 视频提示词生成
+
+### Phase 2: 视频平台接入（进行中）
+- 统一 Provider 接口
+- 接入 2-3 个视频平台
+- 任务状态管理
+
+### Phase 3: 完整工作流
+- 分镜图片生成
+- 视频生成与管理
+- 视频拼接导出
+
+### Phase 4: 架构升级
+- FastAPI + Next.js 重构
+- 用户系统
+- 协作功能
+
+---
+
+## 5. 相关文档
+
+- [故事生成器文档](../story_generator.md)
+- [需求设计文档](./REQUIREMENTS.md)
+- [视频平台文档](./providers/README.md)
+
+---
+
+*文档版本: 2.0*
+*最后更新: 2026-01-24*

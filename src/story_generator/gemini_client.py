@@ -79,7 +79,8 @@ class GeminiClient:
         style: str,
         num_episodes: int,
         episode_duration: int,
-        target_audience: str = ""
+        target_audience: str = "",
+        num_characters: int = 3
     ) -> Dict[str, Any]:
         """
         根据创意生成故事大纲
@@ -103,6 +104,7 @@ class GeminiClient:
 目标受众: {target_audience or "通用观众"}
 集数: {num_episodes}集
 每集时长: 约{episode_duration}秒
+主要人物数量: {num_characters}个
 
 【输出要求】
 请以JSON格式输出，包含以下内容:
@@ -135,7 +137,7 @@ class GeminiClient:
 ```
 
 请确保:
-1. 角色之间有明确的关系和互动
+1. 创建**正好{num_characters}个**主要角色，角色之间有明确的关系和互动
 2. 每集剧情紧凑，适合{episode_duration}秒的时长
 3. 整体故事有清晰的开端、发展、高潮、结局
 4. 风格与类型一致
@@ -305,7 +307,7 @@ class GeminiClient:
         platform: str,
         character_context: str,
         style: str,
-        prompt_type: str = "t2v"  # t2v, i2v_first, i2v_last
+        prompt_type: str = "t2v"  # t2v, i2v_first, i2v_last, i2v, i2v_fl
     ) -> str:
         """
         为指定平台生成视频提示词
@@ -315,7 +317,12 @@ class GeminiClient:
             platform: 平台 (kling, tongyi, jimeng, hailuo)
             character_context: 人物上下文
             style: 风格描述
-            prompt_type: 提示词类型 (t2v=文生视频, i2v_first=首帧, i2v_last=尾帧)
+            prompt_type: 提示词类型
+                - t2v: 文生视频
+                - i2v_first: 首帧图片提示词
+                - i2v_last: 尾帧图片提示词
+                - i2v: 图生视频提示词（仅首帧）
+                - i2v_fl: 图生视频提示词（首尾帧）
         """
         # 各平台的提示词风格指南
         platform_guides = {
@@ -362,14 +369,49 @@ class GeminiClient:
         }
 
         type_instruction = {
-            "t2v": "生成文生视频提示词",
-            "i2v_first": "生成图生视频的首帧图片描述提示词（静态画面，作为视频开始的第一帧）",
-            "i2v_last": "生成图生视频的尾帧图片描述提示词（静态画面，作为视频结束的最后一帧）"
+            "t2v": "生成文生视频提示词（描述视频中的动作和场景变化）",
+            "i2v_first": "生成首帧图片描述提示词（静态画面，作为视频开始的第一帧）",
+            "i2v_last": "生成尾帧图片描述提示词（静态画面，作为视频结束的最后一帧）",
+            "i2v": "生成图生视频提示词（配合首帧图片使用，描述从首帧开始的动作和变化）",
+            "i2v_fl": "生成首尾帧图生视频提示词（配合首帧和尾帧图片使用，描述两帧之间的过渡动作）"
         }.get(prompt_type, "生成文生视频提示词")
 
         camera_hint = ""
         if platform == "hailuo" and shot.camera_movement in hailuo_camera_map:
             camera_hint = f"\n注意: 请在提示词中加入运镜指令 {hailuo_camera_map[shot.camera_movement]}"
+
+        # 根据提示词类型添加额外的指导
+        extra_instruction = ""
+        if prompt_type == "i2v_first":
+            extra_instruction = """
+【特别注意】
+这是首帧图片提示词，需要描述一个静态画面，作为视频的起始帧。
+- 描述人物/场景的初始状态和姿态
+- 不要描述动作过程，只描述静止的瞬间
+- 适合生成图片的详细描述"""
+        elif prompt_type == "i2v_last":
+            extra_instruction = """
+【特别注意】
+这是尾帧图片提示词，需要描述一个静态画面，作为视频的结束帧。
+- 描述人物/场景的最终状态和姿态
+- 要与首帧形成合理的动作结束状态
+- 不要描述动作过程，只描述静止的瞬间"""
+        elif prompt_type == "i2v":
+            extra_instruction = """
+【特别注意】
+这是图生视频提示词，配合首帧图片使用。
+- 假设首帧图片已经提供，描述从首帧开始发生的动作和变化
+- 重点描述运动、动作、表情变化等动态元素
+- 不需要重复描述首帧的静态内容，专注于"发生什么动作"
+- 确保动作与首帧画面自然衔接"""
+        elif prompt_type == "i2v_fl":
+            extra_instruction = """
+【特别注意】
+这是首尾帧图生视频提示词，配合首帧和尾帧图片使用。
+- 假设首帧和尾帧图片已经提供，描述两帧之间的过渡动作
+- 重点描述从首帧状态到尾帧状态的自然过渡
+- 描述动作、运动轨迹、情感变化等
+- 确保过渡流畅合理，不要描述与首尾帧矛盾的内容"""
 
         prompt = f"""你是一位专业的AI视频生成提示词工程师。请为以下镜头{type_instruction}。
 
@@ -388,12 +430,12 @@ class GeminiClient:
 
 {platform_guide}
 {camera_hint}
+{extra_instruction}
 
 请直接输出优化后的提示词（不超过500字），要求:
 1. 符合{platform}平台的提示词风格
 2. 描述清晰、具体、有画面感
 3. 包含必要的风格和质量关键词
-4. 如果是图生视频的首/尾帧，描述静态画面而非动作
 
 直接输出提示词，不要任何额外说明。"""
 

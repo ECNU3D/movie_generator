@@ -182,6 +182,16 @@ def page_new_project():
             help="单个视频片段的最大时长，用于计算分镜数量"
         )
 
+    col5, col6 = st.columns(2)
+    with col5:
+        num_characters = st.number_input(
+            "人物数量",
+            min_value=1,
+            max_value=10,
+            value=3,
+            help="故事中的主要人物数量"
+        )
+
     # 故事创意输入
     if input_mode == "💡 输入故事创意":
         idea = st.text_area(
@@ -215,7 +225,8 @@ def page_new_project():
                     style=style,
                     num_episodes=num_episodes,
                     episode_duration=episode_duration,
-                    target_audience=target_audience
+                    target_audience=target_audience,
+                    num_characters=num_characters
                 )
 
                 # 创建项目
@@ -285,10 +296,20 @@ def page_project_detail():
         return
 
     # 顶部导航
-    col1, col2 = st.columns([4, 1])
+    col1, col2, col3 = st.columns([4, 1, 1])
     with col1:
         st.header(f"📖 {project.name}")
     with col2:
+        # 导出按钮
+        export_content = _generate_export_content(project)
+        st.download_button(
+            label="📥 导出",
+            data=export_content,
+            file_name=f"{project.name}_大纲.md",
+            mime="text/markdown",
+            use_container_width=True
+        )
+    with col3:
         if st.button("← 返回列表"):
             st.session_state.current_project_id = None
             st.session_state.page = "projects"
@@ -776,18 +797,41 @@ def page_generate_prompts():
 
     # 提示词类型选择
     st.subheader("选择提示词类型")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        use_t2v = st.checkbox("文生视频", value=True)
-    with col2:
-        use_i2v_first = st.checkbox("首帧图片", value=False)
-    with col3:
-        use_i2v_last = st.checkbox("尾帧图片", value=False)
 
+    col1, col2 = st.columns(2)
+    with col1:
+        use_t2v = st.checkbox("文生视频 (T2V)", value=True, help="纯文本描述生成视频")
+    with col2:
+        use_first_frame = st.checkbox("首帧图片", value=False, help="生成首帧图片提示词")
+
+    # 尾帧只有在选了首帧时才能选择
+    use_last_frame = False
+    if use_first_frame:
+        use_last_frame = st.checkbox(
+            "尾帧图片",
+            value=False,
+            help="生成尾帧图片提示词（需配合首帧使用）"
+        )
+    else:
+        st.caption("💡 尾帧需要先选择首帧才能启用")
+
+    # 构建提示词类型列表
     prompt_types = []
-    if use_t2v: prompt_types.append("t2v")
-    if use_i2v_first: prompt_types.append("i2v_first")
-    if use_i2v_last: prompt_types.append("i2v_last")
+    if use_t2v:
+        prompt_types.append("t2v")
+    if use_first_frame:
+        prompt_types.append("i2v_first")  # 首帧图片提示词
+        prompt_types.append("i2v")  # 图生视频提示词（配合首帧使用）
+    if use_last_frame:
+        prompt_types.append("i2v_last")  # 尾帧图片提示词
+        # 如果同时有首尾帧，需要生成首尾帧图生视频提示词
+        if "i2v" in prompt_types:
+            prompt_types.remove("i2v")  # 移除普通i2v
+            prompt_types.append("i2v_fl")  # 添加首尾帧图生视频
+
+    # 显示将生成的提示词说明
+    if prompt_types:
+        st.info(f"将生成以下提示词: {', '.join(_get_prompt_type_names(prompt_types))}")
 
     st.divider()
 
@@ -826,9 +870,8 @@ def page_generate_prompts():
         st.subheader("生成的提示词")
 
         for key, prompt in shot.generated_prompts.items():
-            parts = key.rsplit("_", 1)
-            platform = parts[0]
-            ptype = parts[1] if len(parts) > 1 else "t2v"
+            # 解析 key 格式: platform_prompttype (如 kling_t2v, kling_i2v_first, kling_i2v_fl)
+            platform, ptype = _parse_prompt_key(key)
 
             platform_names = {
                 "kling": "可灵",
@@ -839,7 +882,9 @@ def page_generate_prompts():
             type_names = {
                 "t2v": "文生视频",
                 "i2v_first": "首帧图片",
-                "i2v_last": "尾帧图片"
+                "i2v_last": "尾帧图片",
+                "i2v": "图生视频(首帧)",
+                "i2v_fl": "图生视频(首尾帧)"
             }
 
             with st.expander(f"{platform_names.get(platform, platform)} - {type_names.get(ptype, ptype)}", expanded=True):
@@ -852,6 +897,114 @@ def page_generate_prompts():
                     key=f"copy_input_{key}",
                     label_visibility="collapsed"
                 )
+
+
+# ==================== 导出辅助函数 ====================
+
+def _generate_export_content(project: Project) -> str:
+    """生成导出的 Markdown 内容"""
+    lines = []
+
+    # 标题和基本信息
+    lines.append(f"# {project.name}")
+    lines.append("")
+    lines.append(f"**类型**: {GENRE_NAMES.get(project.genre, project.genre)}")
+    lines.append(f"**风格**: {project.style}")
+    if project.target_audience:
+        lines.append(f"**目标受众**: {project.target_audience}")
+    lines.append(f"**集数**: {project.num_episodes}集")
+    lines.append(f"**每集时长**: {project.episode_duration}秒")
+    lines.append("")
+
+    # 故事简介
+    lines.append("## 故事简介")
+    lines.append("")
+    lines.append(project.description)
+    lines.append("")
+
+    # 人物设定
+    lines.append("## 人物设定")
+    lines.append("")
+
+    if project.characters:
+        for char in project.characters:
+            lines.append(f"### {char.name}")
+            lines.append("")
+            lines.append(f"- **年龄**: {char.age}")
+            lines.append(f"- **性格**: {char.personality}")
+            lines.append(f"- **外貌**: {char.appearance}")
+            lines.append(f"- **背景**: {char.background}")
+            if char.relationships:
+                lines.append(f"- **关系**: {char.relationships}")
+            if char.visual_description:
+                lines.append(f"- **视觉描述**: {char.visual_description}")
+
+            # 重大经历
+            if char.major_events:
+                lines.append("")
+                lines.append("**重大经历**:")
+                for event in char.major_events:
+                    lines.append(f"- 第{event.episode_number}集: {event.description}")
+                    if event.impact:
+                        lines.append(f"  - 影响: {event.impact}")
+
+            lines.append("")
+    else:
+        lines.append("暂无人物设定")
+        lines.append("")
+
+    # 剧集大纲
+    lines.append("## 剧集大纲")
+    lines.append("")
+
+    if project.episodes:
+        for ep in sorted(project.episodes, key=lambda x: x.episode_number):
+            lines.append(f"### 第{ep.episode_number}集: {ep.title}")
+            lines.append("")
+            lines.append(ep.outline)
+            lines.append("")
+    else:
+        lines.append("暂无剧集")
+        lines.append("")
+
+    # 页脚
+    lines.append("---")
+    lines.append("")
+    lines.append("*由 AI故事生成器 导出*")
+
+    return "\n".join(lines)
+
+
+# ==================== 提示词类型辅助函数 ====================
+
+def _get_prompt_type_names(prompt_types: list) -> list:
+    """获取提示词类型的中文名称"""
+    names = {
+        "t2v": "文生视频",
+        "i2v_first": "首帧图片",
+        "i2v_last": "尾帧图片",
+        "i2v": "图生视频(首帧)",
+        "i2v_fl": "图生视频(首尾帧)"
+    }
+    return [names.get(pt, pt) for pt in prompt_types]
+
+
+def _parse_prompt_key(key: str) -> tuple:
+    """
+    解析提示词 key 格式
+    格式: platform_prompttype (如 kling_t2v, kling_i2v_first, kling_i2v_fl)
+
+    Returns:
+        (platform, prompt_type)
+    """
+    platforms = ["kling", "tongyi", "jimeng", "hailuo"]
+    for platform in platforms:
+        if key.startswith(platform + "_"):
+            ptype = key[len(platform) + 1:]
+            return (platform, ptype)
+    # 兼容旧格式
+    parts = key.rsplit("_", 1)
+    return (parts[0], parts[1] if len(parts) > 1 else "t2v")
 
 
 # ==================== 撤销/重做辅助函数 ====================
