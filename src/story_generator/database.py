@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
-from .models import Project, Character, Episode, Shot, MajorEvent, EditHistory
+from .models import Project, Character, Episode, Shot, MajorEvent, EditHistory, APICallLog, PromptTemplate
 
 
 class Database:
@@ -141,6 +141,43 @@ class Database:
                 created_at TEXT,
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             )
+        """)
+
+        # API调用记录表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_call_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER,
+                method_name TEXT NOT NULL,
+                prompt TEXT,
+                response TEXT,
+                latency_ms INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'success',
+                error_message TEXT,
+                created_at TEXT,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+            )
+        """)
+
+        # 提示词模板表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prompt_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
+                template TEXT,
+                variables TEXT,
+                version INTEGER DEFAULT 1,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # 为prompt_templates创建索引
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_prompt_templates_name_active
+            ON prompt_templates(name, is_active)
         """)
 
         conn.commit()
@@ -847,3 +884,376 @@ class Database:
         cursor.execute("DELETE FROM edit_history WHERE project_id = ?", (project_id,))
         conn.commit()
         self._close_connection(conn)
+
+    # ==================== APICallLog CRUD ====================
+
+    def create_api_call_log(self, log: APICallLog) -> int:
+        """创建API调用记录"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        now = datetime.now().isoformat()
+        cursor.execute("""
+            INSERT INTO api_call_logs (project_id, method_name, prompt, response,
+                                       latency_ms, status, error_message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (log.project_id, log.method_name, log.prompt, log.response,
+              log.latency_ms, log.status, log.error_message, now))
+
+        log_id = cursor.lastrowid
+        conn.commit()
+        self._close_connection(conn)
+
+        log.id = log_id
+        log.created_at = datetime.fromisoformat(now)
+        return log_id
+
+    def get_api_call_log(self, log_id: int) -> Optional[APICallLog]:
+        """获取单个API调用记录"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM api_call_logs WHERE id = ?", (log_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            self._close_connection(conn)
+            return None
+
+        log = APICallLog(
+            id=row["id"],
+            project_id=row["project_id"],
+            method_name=row["method_name"] or "",
+            prompt=row["prompt"] or "",
+            response=row["response"] or "",
+            latency_ms=row["latency_ms"] or 0,
+            status=row["status"] or "success",
+            error_message=row["error_message"] or "",
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+        )
+
+        self._close_connection(conn)
+        return log
+
+    def list_api_call_logs(
+        self,
+        project_id: Optional[int] = None,
+        method_name: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[APICallLog]:
+        """列出API调用记录"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        query = "SELECT * FROM api_call_logs WHERE 1=1"
+        params = []
+
+        if project_id is not None:
+            query += " AND project_id = ?"
+            params.append(project_id)
+
+        if method_name is not None:
+            query += " AND method_name = ?"
+            params.append(method_name)
+
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        logs = []
+        for row in rows:
+            log = APICallLog(
+                id=row["id"],
+                project_id=row["project_id"],
+                method_name=row["method_name"] or "",
+                prompt=row["prompt"] or "",
+                response=row["response"] or "",
+                latency_ms=row["latency_ms"] or 0,
+                status=row["status"] or "success",
+                error_message=row["error_message"] or "",
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+            )
+            logs.append(log)
+
+        self._close_connection(conn)
+        return logs
+
+    def count_api_call_logs(
+        self,
+        project_id: Optional[int] = None,
+        method_name: Optional[str] = None,
+        status: Optional[str] = None
+    ) -> int:
+        """统计API调用记录数量"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        query = "SELECT COUNT(*) FROM api_call_logs WHERE 1=1"
+        params = []
+
+        if project_id is not None:
+            query += " AND project_id = ?"
+            params.append(project_id)
+
+        if method_name is not None:
+            query += " AND method_name = ?"
+            params.append(method_name)
+
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+
+        cursor.execute(query, params)
+        count = cursor.fetchone()[0]
+
+        self._close_connection(conn)
+        return count
+
+    def get_distinct_method_names(self) -> List[str]:
+        """获取所有不同的方法名"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT DISTINCT method_name FROM api_call_logs ORDER BY method_name")
+        rows = cursor.fetchall()
+
+        methods = [row[0] for row in rows if row[0]]
+
+        self._close_connection(conn)
+        return methods
+
+    # ==================== PromptTemplate CRUD ====================
+
+    def create_prompt_template(self, template: PromptTemplate) -> int:
+        """创建提示词模板"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        now = datetime.now().isoformat()
+        cursor.execute("""
+            INSERT INTO prompt_templates (name, description, template, variables,
+                                          version, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (template.name, template.description, template.template, template.variables,
+              template.version, 1 if template.is_active else 0, now, now))
+
+        template_id = cursor.lastrowid
+        conn.commit()
+        self._close_connection(conn)
+
+        template.id = template_id
+        template.created_at = datetime.fromisoformat(now)
+        template.updated_at = datetime.fromisoformat(now)
+        return template_id
+
+    def get_prompt_template(self, template_id: int) -> Optional[PromptTemplate]:
+        """获取单个提示词模板"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM prompt_templates WHERE id = ?", (template_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            self._close_connection(conn)
+            return None
+
+        template = PromptTemplate(
+            id=row["id"],
+            name=row["name"] or "",
+            description=row["description"] or "",
+            template=row["template"] or "",
+            variables=row["variables"] or "",
+            version=row["version"] or 1,
+            is_active=bool(row["is_active"]),
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+            updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(),
+        )
+
+        self._close_connection(conn)
+        return template
+
+    def get_active_prompt_template(self, name: str) -> Optional[PromptTemplate]:
+        """获取指定名称的当前激活模板"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT * FROM prompt_templates
+            WHERE name = ? AND is_active = 1
+            ORDER BY version DESC LIMIT 1
+        """, (name,))
+        row = cursor.fetchone()
+
+        if not row:
+            self._close_connection(conn)
+            return None
+
+        template = PromptTemplate(
+            id=row["id"],
+            name=row["name"] or "",
+            description=row["description"] or "",
+            template=row["template"] or "",
+            variables=row["variables"] or "",
+            version=row["version"] or 1,
+            is_active=bool(row["is_active"]),
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+            updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(),
+        )
+
+        self._close_connection(conn)
+        return template
+
+    def update_prompt_template(self, template: PromptTemplate):
+        """更新提示词模板"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        now = datetime.now().isoformat()
+        cursor.execute("""
+            UPDATE prompt_templates SET description=?, template=?, variables=?,
+                                        is_active=?, updated_at=?
+            WHERE id=?
+        """, (template.description, template.template, template.variables,
+              1 if template.is_active else 0, now, template.id))
+
+        conn.commit()
+        self._close_connection(conn)
+        template.updated_at = datetime.fromisoformat(now)
+
+    def create_new_version(self, name: str, new_template: str, description: str = "", variables: str = "") -> int:
+        """为指定名称创建新版本（保留历史）"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 获取当前最大版本号
+        cursor.execute("""
+            SELECT MAX(version) FROM prompt_templates WHERE name = ?
+        """, (name,))
+        result = cursor.fetchone()
+        current_max_version = result[0] if result[0] else 0
+
+        # 将所有旧版本设为非激活
+        cursor.execute("""
+            UPDATE prompt_templates SET is_active = 0 WHERE name = ?
+        """, (name,))
+
+        # 创建新版本
+        now = datetime.now().isoformat()
+        new_version = current_max_version + 1
+        cursor.execute("""
+            INSERT INTO prompt_templates (name, description, template, variables,
+                                          version, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+        """, (name, description, new_template, variables, new_version, now, now))
+
+        template_id = cursor.lastrowid
+        conn.commit()
+        self._close_connection(conn)
+
+        return template_id
+
+    def list_prompt_templates(self, include_inactive: bool = False) -> List[PromptTemplate]:
+        """列出所有提示词模板"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        if include_inactive:
+            cursor.execute("SELECT * FROM prompt_templates ORDER BY name, version DESC")
+        else:
+            cursor.execute("SELECT * FROM prompt_templates WHERE is_active = 1 ORDER BY name")
+
+        rows = cursor.fetchall()
+        templates = []
+
+        for row in rows:
+            template = PromptTemplate(
+                id=row["id"],
+                name=row["name"] or "",
+                description=row["description"] or "",
+                template=row["template"] or "",
+                variables=row["variables"] or "",
+                version=row["version"] or 1,
+                is_active=bool(row["is_active"]),
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+                updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(),
+            )
+            templates.append(template)
+
+        self._close_connection(conn)
+        return templates
+
+    def get_template_history(self, name: str) -> List[PromptTemplate]:
+        """获取指定名称的所有历史版本"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT * FROM prompt_templates
+            WHERE name = ?
+            ORDER BY version DESC
+        """, (name,))
+
+        rows = cursor.fetchall()
+        templates = []
+
+        for row in rows:
+            template = PromptTemplate(
+                id=row["id"],
+                name=row["name"] or "",
+                description=row["description"] or "",
+                template=row["template"] or "",
+                variables=row["variables"] or "",
+                version=row["version"] or 1,
+                is_active=bool(row["is_active"]),
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+                updated_at=datetime.fromisoformat(row["updated_at"]) if row["updated_at"] else datetime.now(),
+            )
+            templates.append(template)
+
+        self._close_connection(conn)
+        return templates
+
+    def activate_template_version(self, template_id: int):
+        """激活指定版本的模板"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 获取模板名称
+        cursor.execute("SELECT name FROM prompt_templates WHERE id = ?", (template_id,))
+        row = cursor.fetchone()
+        if not row:
+            self._close_connection(conn)
+            return
+
+        name = row[0]
+
+        # 将同名的所有模板设为非激活
+        cursor.execute("UPDATE prompt_templates SET is_active = 0 WHERE name = ?", (name,))
+
+        # 激活指定模板
+        cursor.execute("UPDATE prompt_templates SET is_active = 1 WHERE id = ?", (template_id,))
+
+        conn.commit()
+        self._close_connection(conn)
+
+    def get_distinct_template_names(self) -> List[str]:
+        """获取所有不同的模板名称"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT DISTINCT name FROM prompt_templates ORDER BY name")
+        rows = cursor.fetchall()
+
+        names = [row[0] for row in rows if row[0]]
+
+        self._close_connection(conn)
+        return names

@@ -16,11 +16,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from story_generator.models import (
     Project, Character, Episode, Shot, MajorEvent, EditHistory,
-    SHOT_TYPE_NAMES, CAMERA_MOVEMENT_NAMES, GENRE_NAMES
+    SHOT_TYPE_NAMES, CAMERA_MOVEMENT_NAMES, GENRE_NAMES,
+    APICallLog, PromptTemplate, PROMPT_TEMPLATE_INFO
 )
 from story_generator.database import Database
 from story_generator.gemini_client import GeminiClient, GeminiConfig
 import json
+import re
+from datetime import datetime
 
 
 # ==================== 初始化 ====================
@@ -31,7 +34,7 @@ def init_database() -> Database:
     return Database(str(db_path))
 
 
-def init_gemini_client() -> Optional[GeminiClient]:
+def init_gemini_client(database: Optional[Database] = None) -> Optional[GeminiClient]:
     """初始化Gemini客户端"""
     # 从文件或环境变量获取API key
     api_key = None
@@ -49,7 +52,13 @@ def init_gemini_client() -> Optional[GeminiClient]:
         return None
 
     config = GeminiConfig(api_key=api_key)
-    return GeminiClient(config)
+    client = GeminiClient(config, database=database)
+
+    # 初始化默认模板
+    if database:
+        client.initialize_default_templates()
+
+    return client
 
 
 # ==================== Session State ====================
@@ -60,7 +69,8 @@ def init_session_state():
         st.session_state.db = init_database()
 
     if "gemini" not in st.session_state:
-        st.session_state.gemini = init_gemini_client()
+        # 传递database给gemini客户端以启用日志记录
+        st.session_state.gemini = init_gemini_client(st.session_state.db)
 
     if "current_project_id" not in st.session_state:
         st.session_state.current_project_id = None
@@ -219,6 +229,8 @@ def page_new_project():
     if st.button("🚀 生成故事大纲", type="primary", disabled=not idea):
         with st.spinner("AI正在创作故事大纲..."):
             try:
+                # 设置上下文（无项目ID，因为项目还未创建）
+                gemini.set_context(project_id=None)
                 result = gemini.generate_story_outline(
                     idea=idea,
                     genre=genre,
@@ -559,6 +571,8 @@ def page_generate_storyboard():
     if st.button("🚀 生成分镜脚本", type="primary"):
         with st.spinner("AI正在生成分镜脚本..."):
             try:
+                # 设置上下文
+                gemini.set_context(project_id=project_id)
                 shots_data = gemini.generate_storyboard(
                     episode=episode,
                     project=project,
@@ -712,6 +726,7 @@ def page_storyboard():
             with col2:
                 if st.button("✨ AI优化", key=f"enhance_{shot.id}"):
                     with st.spinner("优化中..."):
+                        gemini.set_context(project_id=project_id)
                         character_context = project.get_all_characters_context()
                         enhanced = gemini.expand_shot_description(
                             shot, episode, character_context, project.style
@@ -837,6 +852,8 @@ def page_generate_prompts():
 
     if st.button("🚀 生成提示词", type="primary", disabled=not platforms or not prompt_types):
         character_context = project.get_all_characters_context()
+        # 设置上下文
+        gemini.set_context(project_id=project_id)
 
         progress = st.progress(0)
         total = len(platforms) * len(prompt_types)
@@ -1214,6 +1231,8 @@ def page_edit_episode():
         if st.button("🤖 AI生成修改", type="primary", disabled=not instruction):
             with st.spinner("AI正在分析并生成修改..."):
                 try:
+                    # 设置上下文
+                    gemini.set_context(project_id=project_id)
                     result = gemini.edit_episode_with_instruction(
                         episode=episode,
                         project=project,
@@ -1291,6 +1310,8 @@ def _check_and_show_consistency_issues(gemini, db, project, episode, original_ou
     """检查并显示一致性问题"""
     with st.spinner("正在检查一致性..."):
         try:
+            # 设置上下文
+            gemini.set_context(project_id=project.id)
             issues = gemini.analyze_edit_impact(
                 edited_episode=episode,
                 original_outline=original_outline,
@@ -1349,6 +1370,9 @@ def _check_and_show_consistency_issues(gemini, db, project, episode, original_ou
 def _apply_consistency_fix(gemini, db, project, issue):
     """应用一致性修复"""
     try:
+        # 设置上下文
+        gemini.set_context(project_id=project.id)
+
         if issue.get("type") == "episode":
             # 修复剧集
             target_episode = None
@@ -1387,6 +1411,492 @@ def _apply_consistency_fix(gemini, db, project, issue):
 
     except Exception as e:
         st.error(f"修复失败: {e}")
+
+
+# ==================== 模板校验辅助函数 ====================
+
+def _validate_template(template_content: str, expected_variables: list) -> dict:
+    """
+    校验提示词模板的正确性
+
+    Returns:
+        {
+            "valid": bool,  # 是否可以保存（无错误）
+            "errors": [...],  # 必须修复的错误
+            "warnings": [...]  # 建议修复的警告
+        }
+    """
+    errors = []
+    warnings = []
+
+    # 1. 检查大括号是否配对
+    # 统计非转义的大括号
+    # 注意：在Python字符串中 {{ 和 }} 是转义的大括号
+    brace_stack = []
+    i = 0
+    while i < len(template_content):
+        if i < len(template_content) - 1:
+            # 检查是否是转义的大括号 {{ 或 }}
+            two_char = template_content[i:i+2]
+            if two_char == '{{':
+                i += 2
+                continue
+            elif two_char == '}}':
+                i += 2
+                continue
+
+        if template_content[i] == '{':
+            brace_stack.append(i)
+        elif template_content[i] == '}':
+            if not brace_stack:
+                # 找到上下文
+                start = max(0, i - 20)
+                end = min(len(template_content), i + 20)
+                context = template_content[start:end]
+                errors.append(f"位置 {i} 处有多余的 '}}': ...{context}...")
+            else:
+                brace_stack.pop()
+        i += 1
+
+    if brace_stack:
+        for pos in brace_stack:
+            start = max(0, pos - 10)
+            end = min(len(template_content), pos + 30)
+            context = template_content[start:end]
+            errors.append(f"位置 {pos} 处的 '{{' 未闭合: ...{context}...")
+
+    # 2. 提取所有变量 {variable_name}
+    # 匹配 {xxx} 但排除 {{ 和 }}
+    found_variables = set()
+    # 先替换掉转义的大括号
+    temp_content = template_content.replace('{{', '⟨⟨').replace('}}', '⟩⟩')
+    var_pattern = re.compile(r'\{([^{}]*)\}')
+
+    for match in var_pattern.finditer(temp_content):
+        var_name = match.group(1).strip()
+        if not var_name:
+            pos = match.start()
+            errors.append(f"位置 {pos} 处有空的变量占位符 '{{}}'")
+        elif ' ' in var_name or '\n' in var_name:
+            # 变量名包含空格或换行，可能是格式问题
+            pos = match.start()
+            preview = var_name[:30] + "..." if len(var_name) > 30 else var_name
+            errors.append(f"位置 {pos} 处的变量名格式错误（包含空格或换行）: '{{{preview}}}'")
+        else:
+            found_variables.add(var_name)
+
+    # 3. 检查缺失的预期变量
+    expected_set = set(expected_variables) if expected_variables else set()
+    missing_vars = expected_set - found_variables
+    if missing_vars:
+        warnings.append(f"缺少预期变量: {', '.join(['{' + v + '}' for v in sorted(missing_vars)])}")
+
+    # 4. 检查未知变量（可能是拼写错误）- 这会导致运行时 KeyError
+    unknown_vars = found_variables - expected_set
+    if unknown_vars and expected_variables:
+        # 尝试找出可能的拼写建议
+        for unknown in unknown_vars:
+            # 简单的相似度检查
+            suggestion = None
+            for expected in expected_set:
+                if _is_similar(unknown, expected):
+                    suggestion = expected
+                    break
+
+            if suggestion:
+                errors.append(f"变量 '{{{unknown}}}' 不存在，是否应该是 '{{{suggestion}}}'? (会导致运行时错误)")
+            else:
+                errors.append(f"变量 '{{{unknown}}}' 不在预期变量列表中 (会导致运行时错误)")
+
+    # 5. 检查 JSON 代码块的基本格式
+    json_blocks = re.findall(r'```json\s*([\s\S]*?)\s*```', template_content)
+    for i, json_block in enumerate(json_blocks):
+        # 替换变量占位符为有效值进行JSON验证
+        test_json = json_block
+        # 替换 {var} 为 "placeholder"
+        test_json = re.sub(r'\{[^{}]+\}', '"__PLACEHOLDER__"', test_json)
+        # 替换数字占位符
+        test_json = re.sub(r'"__PLACEHOLDER__"(\s*[,\]])', r'1\1', test_json)
+
+        try:
+            json.loads(test_json)
+        except json.JSONDecodeError as e:
+            # JSON 格式错误
+            warnings.append(f"第 {i+1} 个 JSON 代码块可能有格式问题: {str(e)[:50]}")
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings
+    }
+
+
+def _is_similar(s1: str, s2: str, threshold: float = 0.6) -> bool:
+    """简单的字符串相似度检查"""
+    if not s1 or not s2:
+        return False
+
+    # 如果一个是另一个的子串
+    if s1 in s2 or s2 in s1:
+        return True
+
+    # 简单的编辑距离比较
+    len1, len2 = len(s1), len(s2)
+    if abs(len1 - len2) > max(len1, len2) * 0.4:
+        return False
+
+    # 计算相同字符数
+    common = sum(1 for c in s1 if c in s2)
+    similarity = common / max(len1, len2)
+
+    return similarity >= threshold
+
+
+# ==================== 页面: Admin - API调用日志 ====================
+
+def page_admin_api_logs():
+    """API调用日志页面"""
+    db = get_db()
+
+    st.header("🔍 API调用日志")
+    st.caption("查看所有发送给大模型的请求和响应")
+
+    # 返回按钮
+    if st.button("← 返回管理"):
+        st.session_state.page = "admin"
+        st.rerun()
+
+    st.divider()
+
+    # 过滤器
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        # 项目过滤
+        projects = db.list_projects()
+        project_options = {"all": "全部项目"}
+        project_options.update({str(p.id): p.name for p in projects})
+        selected_project = st.selectbox(
+            "项目",
+            options=list(project_options.keys()),
+            format_func=lambda x: project_options[x]
+        )
+        project_id_filter = None if selected_project == "all" else int(selected_project)
+
+    with col2:
+        # 方法过滤
+        methods = db.get_distinct_method_names()
+        method_options = ["全部方法"] + methods
+        selected_method = st.selectbox("API方法", options=method_options)
+        method_filter = None if selected_method == "全部方法" else selected_method
+
+    with col3:
+        # 状态过滤
+        status_options = ["全部状态", "success", "error"]
+        selected_status = st.selectbox("状态", options=status_options)
+        status_filter = None if selected_status == "全部状态" else selected_status
+
+    # 分页
+    total_count = db.count_api_call_logs(project_id_filter, method_filter, status_filter)
+    page_size = 20
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.caption(f"共 {total_count} 条记录")
+    with col2:
+        current_page = st.number_input("页码", min_value=1, max_value=total_pages, value=1)
+
+    offset = (current_page - 1) * page_size
+
+    # 获取日志
+    logs = db.list_api_call_logs(
+        project_id=project_id_filter,
+        method_name=method_filter,
+        status=status_filter,
+        limit=page_size,
+        offset=offset
+    )
+
+    if not logs:
+        st.info("暂无API调用记录")
+        return
+
+    # 显示日志列表
+    for log in logs:
+        status_icon = "✅" if log.status == "success" else "❌"
+        time_str = log.created_at.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 获取项目名称
+        project_name = "无关联"
+        if log.project_id:
+            project = db.get_project(log.project_id)
+            if project:
+                project_name = project.name
+
+        with st.expander(
+            f"{status_icon} [{time_str}] {log.method_name} | {project_name} | {log.latency_ms}ms",
+            expanded=False
+        ):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f"**方法:** {log.method_name}")
+            with col2:
+                st.markdown(f"**延迟:** {log.latency_ms}ms")
+            with col3:
+                st.markdown(f"**状态:** {log.status}")
+
+            if log.error_message:
+                st.error(f"错误信息: {log.error_message}")
+
+            st.markdown("**请求提示词:**")
+            st.text_area(
+                "Prompt",
+                value=log.prompt,
+                height=200,
+                key=f"prompt_{log.id}",
+                label_visibility="collapsed"
+            )
+
+            st.markdown("**响应内容:**")
+            st.text_area(
+                "Response",
+                value=log.response,
+                height=200,
+                key=f"response_{log.id}",
+                label_visibility="collapsed"
+            )
+
+
+# ==================== 页面: Admin - 提示词模板 ====================
+
+def page_admin_templates():
+    """提示词模板管理页面"""
+    db = get_db()
+    gemini = get_gemini()
+
+    st.header("📝 提示词模板管理")
+    st.caption("配置系统中使用的各种提示词模板")
+
+    # 返回按钮
+    if st.button("← 返回管理"):
+        st.session_state.page = "admin"
+        st.rerun()
+
+    st.divider()
+
+    # 初始化默认模板按钮
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🔄 重置为默认", help="将所有模板重置为系统默认值"):
+            if gemini:
+                count = gemini.initialize_default_templates()
+                st.success(f"已初始化 {count} 个默认模板")
+                st.rerun()
+
+    # 获取所有模板名称
+    template_names = db.get_distinct_template_names()
+
+    # 如果没有模板，提示初始化
+    if not template_names:
+        st.info("暂无模板，系统将在首次使用时自动初始化默认模板")
+        if gemini and st.button("立即初始化默认模板"):
+            count = gemini.initialize_default_templates()
+            st.success(f"已初始化 {count} 个模板")
+            st.rerun()
+        return
+
+    # 模板选择
+    selected_template_name = st.selectbox(
+        "选择模板",
+        options=template_names,
+        format_func=lambda x: f"{PROMPT_TEMPLATE_INFO.get(x, {}).get('name', x)} ({x})"
+    )
+
+    if selected_template_name:
+        # 获取当前激活的模板
+        active_template = db.get_active_prompt_template(selected_template_name)
+        template_info = PROMPT_TEMPLATE_INFO.get(selected_template_name, {})
+
+        st.subheader(template_info.get("name", selected_template_name))
+        st.caption(template_info.get("description", ""))
+
+        if template_info.get("variables"):
+            vars_display = ', '.join(['{' + v + '}' for v in template_info['variables']])
+            st.markdown(f"**可用变量:** `{vars_display}`")
+
+        if active_template:
+            st.markdown(f"**当前版本:** v{active_template.version}")
+            st.caption(f"最后更新: {active_template.updated_at.strftime('%Y-%m-%d %H:%M')}")
+
+            # 编辑模板
+            new_template = st.text_area(
+                "模板内容",
+                value=active_template.template,
+                height=400,
+                help="使用 {变量名} 格式引用变量",
+                key=f"template_content_{selected_template_name}"
+            )
+
+            # 校验按钮
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                validate_clicked = st.button("🔍 校验模板", use_container_width=True)
+
+            with col2:
+                save_clicked = st.button("💾 保存为新版本", type="primary", use_container_width=True)
+
+            with col3:
+                if st.button("📋 复制模板", use_container_width=True):
+                    st.code(new_template)
+
+            # 执行校验
+            expected_vars = template_info.get("variables", [])
+            validation_result = None
+
+            if validate_clicked or save_clicked:
+                validation_result = _validate_template(new_template, expected_vars)
+
+                # 显示校验结果
+                if validation_result["errors"]:
+                    st.error("❌ 发现以下错误（必须修复）:")
+                    for err in validation_result["errors"]:
+                        st.markdown(f"- {err}")
+
+                if validation_result["warnings"]:
+                    st.warning("⚠️ 发现以下警告（建议检查）:")
+                    for warn in validation_result["warnings"]:
+                        st.markdown(f"- {warn}")
+
+                if validation_result["valid"] and not validation_result["warnings"]:
+                    st.success("✅ 模板校验通过")
+
+            # 保存逻辑
+            if save_clicked:
+                if validation_result is None:
+                    validation_result = _validate_template(new_template, expected_vars)
+
+                if not validation_result["valid"]:
+                    st.error("存在错误，无法保存。请先修复上述错误。")
+                elif new_template == active_template.template:
+                    st.info("内容未变化")
+                else:
+                    # 有警告时询问确认
+                    if validation_result["warnings"]:
+                        st.session_state[f"pending_save_{selected_template_name}"] = new_template
+                        st.warning("存在警告，确认要保存吗？")
+                        if st.button("✅ 确认保存", key="confirm_save"):
+                            new_version = db.create_new_version(
+                                selected_template_name,
+                                new_template
+                            )
+                            st.success(f"已保存为 v{new_version.version}")
+                            if f"pending_save_{selected_template_name}" in st.session_state:
+                                del st.session_state[f"pending_save_{selected_template_name}"]
+                            st.rerun()
+                    else:
+                        # 无警告，直接保存
+                        new_version = db.create_new_version(
+                            selected_template_name,
+                            new_template
+                        )
+                        st.success(f"已保存为 v{new_version.version}")
+                        st.rerun()
+
+            # 版本历史
+            st.divider()
+            st.subheader("📜 版本历史")
+
+            history = db.get_template_history(selected_template_name)
+            if history:
+                for template in history:
+                    version_label = f"v{template.version}"
+                    if template.is_active:
+                        version_label += " (当前)"
+
+                    with st.expander(
+                        f"{version_label} - {template.updated_at.strftime('%Y-%m-%d %H:%M')}",
+                        expanded=False
+                    ):
+                        st.text_area(
+                            "内容",
+                            value=template.template,
+                            height=200,
+                            key=f"history_{template.id}",
+                            disabled=True,
+                            label_visibility="collapsed"
+                        )
+
+                        if not template.is_active:
+                            if st.button(f"恢复此版本", key=f"restore_{template.id}"):
+                                db.activate_template_version(selected_template_name, template.version)
+                                st.success(f"已恢复到 v{template.version}")
+                                st.rerun()
+            else:
+                st.info("暂无历史版本")
+
+
+# ==================== 页面: Admin 主页 ====================
+
+def page_admin():
+    """Admin管理页面"""
+    st.header("⚙️ 系统管理")
+    st.caption("API调用追踪和系统配置")
+
+    # 返回按钮
+    if st.button("← 返回项目列表"):
+        st.session_state.page = "projects"
+        st.rerun()
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("🔍 API调用日志")
+        st.markdown("""
+        - 查看发送给大模型的所有请求
+        - 查看原始响应内容
+        - 按项目、方法、状态过滤
+        - 追踪API调用延迟
+        """)
+        if st.button("打开API日志", key="open_logs", use_container_width=True):
+            st.session_state.page = "admin_api_logs"
+            st.rerun()
+
+    with col2:
+        st.subheader("📝 提示词模板")
+        st.markdown("""
+        - 配置系统中的所有提示词
+        - 支持版本历史管理
+        - 可恢复到历史版本
+        - 平台提示词定制
+        """)
+        if st.button("管理模板", key="open_templates", use_container_width=True):
+            st.session_state.page = "admin_templates"
+            st.rerun()
+
+    st.divider()
+
+    # 统计信息
+    db = get_db()
+    total_logs = db.count_api_call_logs()
+    template_count = len(db.get_distinct_template_names())
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("API调用次数", total_logs)
+    with col2:
+        st.metric("提示词模板数", template_count)
+    with col3:
+        # 计算成功率
+        if total_logs > 0:
+            success_count = db.count_api_call_logs(status="success")
+            success_rate = (success_count / total_logs) * 100
+            st.metric("成功率", f"{success_rate:.1f}%")
+        else:
+            st.metric("成功率", "N/A")
 
 
 # ==================== 主应用 ====================
@@ -1432,6 +1942,13 @@ def main():
         else:
             st.error("❌ Gemini未连接")
 
+        st.divider()
+
+        # Admin入口
+        if st.button("⚙️ 系统管理", use_container_width=True):
+            st.session_state.page = "admin"
+            st.rerun()
+
     # 页面路由
     page = st.session_state.page
 
@@ -1449,6 +1966,12 @@ def main():
         page_generate_prompts()
     elif page == "edit_episode":
         page_edit_episode()
+    elif page == "admin":
+        page_admin()
+    elif page == "admin_api_logs":
+        page_admin_api_logs()
+    elif page == "admin_templates":
+        page_admin_templates()
     else:
         page_projects()
 

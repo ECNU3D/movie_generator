@@ -473,6 +473,97 @@ CAMERA_MOVEMENT_NAMES = {
     "handheld": "手持晃动",
 }
 
+@dataclass
+class APICallLog:
+    """API调用记录，用于追踪和审计"""
+    id: Optional[int] = None
+    project_id: Optional[int] = None  # 关联的项目ID（可为空）
+    method_name: str = ""  # 调用的方法名，如 "generate_story_outline"
+    prompt: str = ""  # 发送给模型的完整prompt
+    response: str = ""  # 模型的原始响应
+    latency_ms: int = 0  # 响应时间（毫秒）
+    status: str = "success"  # success / error
+    error_message: str = ""  # 错误信息（如果有）
+    created_at: datetime = field(default_factory=datetime.now)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "method_name": self.method_name,
+            "prompt": self.prompt,
+            "response": self.response,
+            "latency_ms": self.latency_ms,
+            "status": self.status,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat()
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "APICallLog":
+        return cls(
+            id=data.get("id"),
+            project_id=data.get("project_id"),
+            method_name=data.get("method_name", ""),
+            prompt=data.get("prompt", ""),
+            response=data.get("response", ""),
+            latency_ms=data.get("latency_ms", 0),
+            status=data.get("status", "success"),
+            error_message=data.get("error_message", ""),
+            created_at=datetime.fromisoformat(data.get("created_at", datetime.now().isoformat()))
+        )
+
+
+@dataclass
+class PromptTemplate:
+    """提示词模板，支持版本管理"""
+    id: Optional[int] = None
+    name: str = ""  # 模板名称/方法名，如 "generate_story_outline"
+    description: str = ""  # 中文说明
+    template: str = ""  # 提示词模板内容
+    variables: str = ""  # 可用变量列表（JSON格式）
+    version: int = 1  # 版本号
+    is_active: bool = True  # 是否为当前激活版本
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "template": self.template,
+            "variables": self.variables,
+            "version": self.version,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat()
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PromptTemplate":
+        return cls(
+            id=data.get("id"),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            template=data.get("template", ""),
+            variables=data.get("variables", ""),
+            version=data.get("version", 1),
+            is_active=data.get("is_active", True),
+            created_at=datetime.fromisoformat(data.get("created_at", datetime.now().isoformat())),
+            updated_at=datetime.fromisoformat(data.get("updated_at", datetime.now().isoformat()))
+        )
+
+    def get_variables_list(self) -> List[str]:
+        """获取变量列表"""
+        if not self.variables:
+            return []
+        try:
+            return json.loads(self.variables)
+        except:
+            return []
+
+
 # 故事类型的中文映射
 GENRE_NAMES = {
     "romance": "爱情",
@@ -486,4 +577,79 @@ GENRE_NAMES = {
     "documentary": "纪录片",
     "animation": "动画",
     "other": "其他",
+}
+
+
+# 提示词模板的中文名称和说明
+PROMPT_TEMPLATE_INFO = {
+    "generate_story_outline": {
+        "name": "故事大纲生成",
+        "description": "根据用户创意生成完整的故事大纲、角色和剧集",
+        "variables": ["idea", "genre_name", "style", "target_audience", "num_episodes", "episode_duration", "num_characters"]
+    },
+    "generate_random_story_idea": {
+        "name": "随机创意生成",
+        "description": "随机生成一个故事创意",
+        "variables": ["genre_hint", "style_hint"]
+    },
+    "generate_storyboard": {
+        "name": "分镜脚本生成",
+        "description": "将剧集大纲展开为详细的分镜脚本",
+        "variables": ["project_name", "genre_name", "style", "episode_number", "episode_title", "episode_duration", "episode_outline", "character_context", "target_shots", "min_shots", "max_video_duration", "avg_shot_duration"]
+    },
+    "expand_shot_description": {
+        "name": "镜头描述优化",
+        "description": "扩展和优化单个镜头的画面描述",
+        "variables": ["scene_number", "shot_number", "shot_type", "duration", "camera_movement", "visual_description", "dialogue", "style", "character_context"]
+    },
+    "generate_video_prompt": {
+        "name": "视频提示词生成",
+        "description": "为指定平台生成视频生成提示词",
+        "variables": ["visual_description", "dialogue", "shot_type", "camera_movement", "duration", "sound_music", "style", "character_context", "platform", "platform_guide", "camera_hint", "type_instruction", "extra_instruction"]
+    },
+    "platform_guide_kling": {
+        "name": "可灵平台提示词指南",
+        "description": "可灵(Kling)平台的提示词风格指南",
+        "variables": []
+    },
+    "platform_guide_tongyi": {
+        "name": "通义万相平台提示词指南",
+        "description": "通义万相平台的提示词风格指南",
+        "variables": []
+    },
+    "platform_guide_jimeng": {
+        "name": "即梦平台提示词指南",
+        "description": "即梦(Jimeng)平台的提示词风格指南",
+        "variables": []
+    },
+    "platform_guide_hailuo": {
+        "name": "海螺平台提示词指南",
+        "description": "海螺(Hailuo)平台的提示词风格指南",
+        "variables": []
+    },
+    "edit_episode_with_instruction": {
+        "name": "AI编辑剧集",
+        "description": "根据用户指令AI编辑剧集大纲",
+        "variables": ["project_name", "genre_name", "style", "num_episodes", "episode_number", "episode_title", "episode_outline", "character_context", "instruction"]
+    },
+    "analyze_edit_impact": {
+        "name": "编辑影响分析",
+        "description": "分析编辑对其他剧集和角色的影响",
+        "variables": ["episode_number", "episode_title", "original_outline", "new_outline", "other_episodes_context", "characters_context"]
+    },
+    "generate_consistency_fix": {
+        "name": "一致性修复",
+        "description": "为一致性问题生成修复建议",
+        "variables": ["project_name", "style", "issue_type", "target_name", "issue_description", "original_content", "character_context"]
+    },
+    "batch_check_consistency": {
+        "name": "批量一致性检查",
+        "description": "全局检查故事的一致性问题",
+        "variables": ["project_name", "genre_name", "style", "timeline", "character_timelines"]
+    },
+    "analyze_episode_for_character_events": {
+        "name": "角色事件分析",
+        "description": "分析剧集中各角色的重大经历",
+        "variables": ["content", "character_names"]
+    }
 }

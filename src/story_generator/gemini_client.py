@@ -8,7 +8,8 @@ Google Gemini API集成，用于故事生成
 import os
 import json
 import re
-from typing import Optional, List, Dict, Any
+import time
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass
 
 from google import genai
@@ -16,8 +17,12 @@ from google.genai import types
 
 from .models import (
     Project, Character, Episode, Shot, MajorEvent,
-    SHOT_TYPE_NAMES, CAMERA_MOVEMENT_NAMES, GENRE_NAMES
+    SHOT_TYPE_NAMES, CAMERA_MOVEMENT_NAMES, GENRE_NAMES,
+    APICallLog, PromptTemplate, PROMPT_TEMPLATE_INFO
 )
+
+if TYPE_CHECKING:
+    from .database import Database
 
 
 @dataclass
@@ -32,22 +37,569 @@ class GeminiConfig:
 class GeminiClient:
     """Gemini API客户端"""
 
-    def __init__(self, config: GeminiConfig):
+    def __init__(self, config: GeminiConfig, database: Optional["Database"] = None):
         self.config = config
         self.client = genai.Client(api_key=config.api_key)
+        self.database = database
+        self._current_project_id: Optional[int] = None
+        self._current_method_name: str = ""
+
+    def set_context(self, project_id: Optional[int] = None, method_name: str = ""):
+        """设置当前上下文（用于日志记录）"""
+        self._current_project_id = project_id
+        self._current_method_name = method_name
 
     def _generate(self, prompt: str, temperature: Optional[float] = None) -> str:
-        """调用Gemini生成内容"""
-        response = self.client.models.generate_content(
-            model=self.config.model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=temperature if temperature is not None else self.config.temperature,
-                max_output_tokens=self.config.max_output_tokens,
-            ),
-        )
+        """调用Gemini生成内容，并记录日志"""
+        start_time = time.time()
+        response_text = ""
+        status = "success"
+        error_message = ""
 
-        return response.text
+        try:
+            response = self.client.models.generate_content(
+                model=self.config.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=temperature if temperature is not None else self.config.temperature,
+                    max_output_tokens=self.config.max_output_tokens,
+                ),
+            )
+            response_text = response.text
+        except Exception as e:
+            status = "error"
+            error_message = str(e)
+            raise
+        finally:
+            # 计算延迟
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # 记录API调用日志
+            if self.database:
+                try:
+                    log = APICallLog(
+                        project_id=self._current_project_id,
+                        method_name=self._current_method_name,
+                        prompt=prompt,
+                        response=response_text,
+                        latency_ms=latency_ms,
+                        status=status,
+                        error_message=error_message
+                    )
+                    self.database.create_api_call_log(log)
+                except Exception:
+                    pass  # 日志记录失败不影响主流程
+
+        return response_text
+
+    def _get_template(self, name: str) -> Optional[str]:
+        """从数据库获取提示词模板"""
+        if self.database:
+            template = self.database.get_active_prompt_template(name)
+            if template:
+                return template.template
+        return None
+
+    def _get_prompt(self, template_name: str, default_prompt: str, **kwargs) -> str:
+        """
+        获取提示词，优先从数据库模板获取，否则使用默认值
+
+        Args:
+            template_name: 模板名称
+            default_prompt: 默认提示词（已包含变量替换）
+            **kwargs: 用于模板变量替换的参数
+
+        Returns:
+            最终的提示词
+        """
+        # 尝试从数据库获取模板
+        template = self._get_template(template_name)
+        if template:
+            try:
+                # 使用安全的格式化，忽略多余的参数
+                return template.format(**kwargs)
+            except KeyError as e:
+                # 模板变量缺失，回退到默认
+                print(f"模板变量缺失 {e}，使用默认提示词")
+                return default_prompt
+        return default_prompt
+
+    def initialize_default_templates(self) -> int:
+        """
+        初始化所有默认提示词模板到数据库
+
+        Returns:
+            创建的模板数量
+        """
+        if not self.database:
+            return 0
+
+        created_count = 0
+        default_templates = self._get_all_default_templates()
+
+        for name, template_data in default_templates.items():
+            # 检查是否已存在
+            existing = self.database.get_active_prompt_template(name)
+            if not existing:
+                from .models import PromptTemplate, PROMPT_TEMPLATE_INFO
+                info = PROMPT_TEMPLATE_INFO.get(name, {})
+                template = PromptTemplate(
+                    name=name,
+                    description=info.get("description", ""),
+                    template=template_data["template"],
+                    variables=json.dumps(info.get("variables", []), ensure_ascii=False),
+                    version=1,
+                    is_active=True
+                )
+                self.database.create_prompt_template(template)
+                created_count += 1
+
+        return created_count
+
+    def _get_all_default_templates(self) -> Dict[str, Dict[str, str]]:
+        """获取所有默认模板"""
+        return {
+            "generate_story_outline": {
+                "template": self._get_default_story_outline_template()
+            },
+            "generate_random_story_idea": {
+                "template": self._get_default_random_idea_template()
+            },
+            "generate_storyboard": {
+                "template": self._get_default_storyboard_template()
+            },
+            "expand_shot_description": {
+                "template": self._get_default_expand_shot_template()
+            },
+            "generate_video_prompt": {
+                "template": self._get_default_video_prompt_template()
+            },
+            "analyze_episode_for_character_events": {
+                "template": self._get_default_analyze_events_template()
+            },
+            "edit_episode_with_instruction": {
+                "template": self._get_default_edit_episode_template()
+            },
+            "analyze_edit_impact": {
+                "template": self._get_default_analyze_impact_template()
+            },
+            "generate_consistency_fix": {
+                "template": self._get_default_consistency_fix_template()
+            },
+            "batch_check_consistency": {
+                "template": self._get_default_batch_check_template()
+            },
+            "platform_guide_kling": {
+                "template": self._get_platform_guide("kling")
+            },
+            "platform_guide_tongyi": {
+                "template": self._get_platform_guide("tongyi")
+            },
+            "platform_guide_jimeng": {
+                "template": self._get_platform_guide("jimeng")
+            },
+            "platform_guide_hailuo": {
+                "template": self._get_platform_guide("hailuo")
+            },
+        }
+
+    def _get_platform_guide(self, platform: str) -> str:
+        """获取平台提示词指南"""
+        guides = {
+            "kling": """【可灵 Kling 提示词风格】
+- 支持中英文，推荐使用详细的场景描述
+- 支持通过<<<image_1>>>等引用图片
+- 格式: [主体] + [动作] + [场景] + [风格] + [镜头]
+- 示例: 一位年轻女子在樱花树下微笑，春日午后，柔和的阳光，电影级画质，中景镜头""",
+
+            "tongyi": """【通义万相 Tongyi 提示词风格】
+- 支持中文，描述要清晰具体
+- 支持多镜头叙事（wan2.6模型）
+- 格式: 清晰描述场景、人物、动作、氛围
+- 示例: 城市街头，一个穿着白色连衣裙的女孩转身微笑，背景是霓虹灯闪烁的夜景，电影感画面""",
+
+            "jimeng": """【即梦 Jimeng 提示词风格】
+- 支持中英文混合
+- Pro版支持多镜头叙事
+- 格式: 详细的视觉描述 + 风格关键词
+- 示例: 镜头1：清晨的山间，云雾缭绕；镜头2：一只白鹤展翅飞过湖面""",
+
+            "hailuo": """【海螺 Hailuo 提示词风格】
+- 支持中英文
+- 支持运镜指令: [左移], [右移], [推进], [拉远], [上升], [下降], [左摇], [右摇], [固定]等
+- 格式: 场景描述 + [运镜指令]
+- 示例: 女孩站在海边，望向远方的夕阳 [推进]，海风吹动她的长发 [右摇]"""
+        }
+        return guides.get(platform, "使用清晰详细的中文描述")
+
+    def _get_default_story_outline_template(self) -> str:
+        """故事大纲生成的默认模板"""
+        return """你是一位专业的编剧和故事策划师。请根据以下信息创作一个完整的故事大纲。
+
+【创作要求】
+故事创意: {idea}
+故事类型: {genre_name}
+风格描述: {style}
+目标受众: {target_audience}
+集数: {num_episodes}集
+每集时长: 约{episode_duration}秒
+主要人物数量: {num_characters}个
+
+【输出要求】
+请以JSON格式输出，包含以下内容:
+
+```json
+{{
+    "title": "故事标题",
+    "synopsis": "200字以内的故事简介",
+    "theme": "核心主题",
+    "characters": [
+        {{
+            "name": "角色名称",
+            "age": "年龄（如：25岁、中年等）",
+            "appearance": "外貌描述（100字以内，包括身高、体型、发型、穿着风格等视觉特征）",
+            "personality": "性格特点（50字以内）",
+            "background": "背景故事（100字以内）",
+            "relationships": "与其他角色的关系",
+            "visual_description": "用于AI生成图像/视频的视觉描述（英文，50词以内，描述这个角色的典型视觉特征）"
+        }}
+    ],
+    "episodes": [
+        {{
+            "episode_number": 1,
+            "title": "本集标题",
+            "outline": "本集剧情大纲（100-200字，描述主要情节发展）",
+            "key_events": ["关键事件1", "关键事件2"]
+        }}
+    ]
+}}
+```
+
+请确保:
+1. 创建**正好{num_characters}个**主要角色，角色之间有明确的关系和互动
+2. 每集剧情紧凑，适合{episode_duration}秒的时长
+3. 整体故事有清晰的开端、发展、高潮、结局
+4. 风格与类型一致
+5. visual_description用英文编写，便于后续生成视频"""
+
+    def _get_default_random_idea_template(self) -> str:
+        """随机创意生成的默认模板"""
+        return """你是一位富有创意的故事策划师。请随机生成一个有趣的短视频故事创意。
+
+{genre_hint}
+{style_hint}
+
+要求:
+1. 创意新颖，有吸引力
+2. 适合制作成短视频系列
+3. 有明确的主角和冲突
+4. 50-100字的简短描述
+
+直接输出故事创意，不要任何额外说明。"""
+
+    def _get_default_storyboard_template(self) -> str:
+        """分镜脚本生成的默认模板"""
+        return """你是一位专业的分镜师和导演。请将以下剧集大纲展开为详细的分镜脚本。
+
+【项目信息】
+故事名称: {project_name}
+故事类型: {genre_name}
+风格: {style}
+
+【剧集信息】
+第{episode_number}集: {episode_title}
+目标时长: {episode_duration}秒
+剧情大纲:
+{outline}
+
+{character_context}
+
+【分镜要求】
+请生成 **约{target_shots}个镜头** 的分镜脚本（最少{min_shots}个，每个镜头最长{max_video_duration}秒）。
+每个镜头包含:
+- scene_number: 场景编号
+- shot_number: 镜头编号（场景内）
+- shot_type: 镜头类型 (extreme_wide/wide/full/medium/medium_close/close_up/extreme_close_up/pov/over_shoulder/two_shot)
+- duration: 镜头时长（秒，平均约{avg_shot_duration}秒，最长不超过{max_video_duration}秒）
+- visual_description: 画面描述（详细描述画面内容、人物动作、表情、环境等）
+- dialogue: 对白（如果有）
+- sound_music: 音效/配乐提示
+- camera_movement: 镜头运动 (static/pan_left/pan_right/tilt_up/tilt_down/zoom_in/zoom_out/dolly_in/dolly_out/tracking/crane_up/crane_down/handheld)
+- notes: 其他备注
+
+请以JSON格式输出:
+```json
+{{
+    "shots": [
+        {{
+            "scene_number": 1,
+            "shot_number": 1,
+            "shot_type": "wide",
+            "duration": 5,
+            "visual_description": "画面描述...",
+            "dialogue": "对白内容...",
+            "sound_music": "背景音乐舒缓，环境音...",
+            "camera_movement": "static",
+            "notes": ""
+        }}
+    ],
+    "total_duration": {episode_duration}
+}}
+```
+
+注意:
+1. 镜头总时长应接近目标时长{episode_duration}秒
+2. 每个镜头时长不得超过{max_video_duration}秒
+3. 镜头切换要有节奏感
+4. 画面描述要足够详细，便于后续生成视频
+5. 保持与人物设定的一致性"""
+
+    def _get_default_expand_shot_template(self) -> str:
+        """扩展镜头描述的默认模板"""
+        return """请帮助扩展和优化以下镜头的画面描述，使其更加详细和生动。
+
+【当前镜头信息】
+场景{scene_number} - 镜头{shot_number}
+镜头类型: {shot_type}
+时长: {duration}秒
+镜头运动: {camera_movement}
+当前描述: {visual_description}
+对白: {dialogue}
+
+【风格要求】
+{style}
+
+{character_context}
+
+请输出优化后的画面描述（200字以内），要求:
+1. 更加详细和具体
+2. 包含光线、色调、氛围等视觉元素
+3. 描述人物的表情、动作细节
+4. 保持与整体风格一致
+
+直接输出优化后的描述，不要其他说明。"""
+
+    def _get_default_video_prompt_template(self) -> str:
+        """视频提示词生成的默认模板"""
+        return """你是一位专业的AI视频生成提示词工程师。请为以下镜头{type_instruction}。
+
+【镜头信息】
+画面描述: {visual_description}
+对白: {dialogue}
+镜头类型: {shot_type}
+镜头运动: {camera_movement}
+时长: {duration}秒
+音效/配乐: {sound_music}
+
+【风格要求】
+{style}
+
+{character_context}
+
+{platform_guide}
+{camera_hint}
+{extra_instruction}
+
+请直接输出优化后的提示词（不超过500字），要求:
+1. 符合{platform}平台的提示词风格
+2. 描述清晰、具体、有画面感
+3. 包含必要的风格和质量关键词
+
+直接输出提示词，不要任何额外说明。"""
+
+    def _get_default_analyze_events_template(self) -> str:
+        """分析角色事件的默认模板"""
+        return """请分析以下剧集内容，提取各角色经历的重大事件。
+
+【剧集内容】
+{content}
+
+【角色列表】
+{character_names}
+
+请分析每个角色在本集中是否经历了重大事件（如: 重要决定、情感转折、关系变化、重大发现等）。
+
+以JSON格式输出:
+```json
+{{
+    "events": [
+        {{
+            "character_name": "角色名",
+            "event_description": "事件简述（50字以内）",
+            "impact": "对角色的影响（30字以内）"
+        }}
+    ]
+}}
+```
+
+只输出确实发生了重大事件的角色，如果某角色本集没有重大经历则不要包含。"""
+
+    def _get_default_edit_episode_template(self) -> str:
+        """AI编辑剧集的默认模板"""
+        return """你是一位专业的编剧。请根据用户的指令修改以下剧集大纲。
+
+【项目信息】
+故事名称: {project_name}
+故事类型: {genre_name}
+风格: {style}
+总集数: {num_episodes}
+
+【当前剧集】
+第{episode_number}集
+标题: {episode_title}
+大纲:
+{outline}
+
+{character_context}
+
+【用户修改指令】
+{instruction}
+
+请根据指令修改剧集大纲，以JSON格式输出:
+```json
+{{
+    "new_title": "修改后的标题（如果标题需要变化）",
+    "new_outline": "修改后的完整大纲",
+    "changes_summary": "简要说明做了哪些修改（50字以内）"
+}}
+```
+
+注意:
+1. 仅根据指令进行必要的修改
+2. 保持与整体故事风格的一致性
+3. 考虑与其他剧集的连贯性"""
+
+    def _get_default_analyze_impact_template(self) -> str:
+        """分析编辑影响的默认模板"""
+        return """你是一位专业的剧本顾问。请分析以下剧集大纲的修改对其他内容的影响。
+
+【被修改的剧集】
+第{episode_number}集 - {episode_title}
+
+【原大纲】
+{original_outline}
+
+【新大纲】
+{new_outline}
+
+【其他剧集】
+{other_episodes_context}
+
+【角色设定】
+{characters_context}
+
+请分析这次修改是否会导致以下问题:
+1. 与前面剧集的剧情矛盾
+2. 与后面剧集的剧情不连贯
+3. 与角色设定或经历的矛盾
+4. 时间线问题
+
+以JSON格式输出所有发现的问题:
+```json
+{{
+    "issues": [
+        {{
+            "type": "episode",
+            "id": 剧集编号,
+            "name": "第X集标题",
+            "issue": "问题描述",
+            "severity": "warning或error（error=严重矛盾必须修复，warning=建议修复但不影响故事理解）",
+            "suggested_fix": "建议如何修改受影响的内容",
+            "auto_fixable": true或false,
+            "auto_fix_reason": "为什么可以/不可以自动修复"
+        }},
+        {{
+            "type": "character",
+            "id": 0,
+            "name": "角色名",
+            "issue": "问题描述",
+            "severity": "warning或error",
+            "suggested_fix": "建议如何修改角色设定或经历",
+            "auto_fixable": true或false,
+            "auto_fix_reason": "为什么可以/不可以自动修复"
+        }}
+    ]
+}}
+```
+
+【auto_fixable判断标准】
+- true: 问题是简单的事实性错误，可以通过添加/修改少量细节来修复，不影响核心剧情
+- false: 问题涉及叙事结构、角色核心设定、或需要创意性重写，应由人工审核
+
+如果没有发现问题，返回空的issues数组。只报告真正存在的问题，不要过度解读。"""
+
+    def _get_default_consistency_fix_template(self) -> str:
+        """一致性修复的默认模板"""
+        return """你是一位专业的剧本顾问。请修复以下一致性问题。
+
+【项目信息】
+故事名称: {project_name}
+风格: {style}
+
+【问题类型】
+{issue_type}: {target_name}
+
+【问题描述】
+{issue_description}
+
+【需要修改的内容】
+{original_content}
+
+{character_context}
+
+请生成修复后的内容，以JSON格式输出:
+```json
+{{
+    "fixed_content": "修复后的完整内容",
+    "explanation": "简要说明修改了什么（30字以内）"
+}}
+```
+
+注意:
+1. 只做必要的修改来解决问题
+2. 保持内容的完整性和连贯性
+3. 不要改变核心情节，只修复不一致之处"""
+
+    def _get_default_batch_check_template(self) -> str:
+        """全局一致性检查的默认模板"""
+        return """你是一位专业的剧本审核专家。请全面检查以下故事的一致性问题。
+
+【项目信息】
+故事名称: {project_name}
+类型: {genre_name}
+风格: {style}
+
+【剧情时间线】
+{timeline}
+
+【角色经历时间线】
+{character_timelines}
+
+请检查以下方面的一致性问题:
+1. 剧情逻辑：前后剧集的因果关系是否合理
+2. 角色行为：角色的行为是否符合其设定
+3. 时间线：事件发生的顺序是否合理
+4. 细节一致：场景、物品、关系等细节是否前后一致
+
+以JSON格式输出所有发现的问题:
+```json
+{{
+    "issues": [
+        {{
+            "type": "episode或character",
+            "id": 相关ID,
+            "name": "名称",
+            "issue": "问题描述",
+            "severity": "warning或error",
+            "suggested_fix": "建议的修复方案",
+            "auto_fixable": true或false
+        }}
+    ],
+    "overall_assessment": "整体一致性评估（好/一般/需要改进）"
+}}
+```
+
+如果没有发现问题，返回空的issues数组。只报告真正的问题，不要过度解读。"""
 
     def _parse_json_response(self, response: str) -> dict:
         """解析JSON响应，处理可能的markdown包装"""
@@ -93,15 +645,18 @@ class GeminiClient:
             "episodes": [...]
         }
         """
+        self._current_method_name = "generate_story_outline"
         genre_name = GENRE_NAMES.get(genre, genre)
+        target_audience_text = target_audience or "通用观众"
 
-        prompt = f"""你是一位专业的编剧和故事策划师。请根据以下信息创作一个完整的故事大纲。
+        # 构建默认提示词
+        default_prompt = f"""你是一位专业的编剧和故事策划师。请根据以下信息创作一个完整的故事大纲。
 
 【创作要求】
 故事创意: {idea}
 故事类型: {genre_name}
 风格描述: {style}
-目标受众: {target_audience or "通用观众"}
+目标受众: {target_audience_text}
 集数: {num_episodes}集
 每集时长: 约{episode_duration}秒
 主要人物数量: {num_characters}个
@@ -143,15 +698,29 @@ class GeminiClient:
 4. 风格与类型一致
 5. visual_description用英文编写，便于后续生成视频"""
 
+        # 尝试使用数据库模板
+        prompt = self._get_prompt(
+            "generate_story_outline",
+            default_prompt,
+            idea=idea,
+            genre_name=genre_name,
+            style=style,
+            target_audience=target_audience_text,
+            num_episodes=num_episodes,
+            episode_duration=episode_duration,
+            num_characters=num_characters
+        )
+
         response = self._generate(prompt)
         return self._parse_json_response(response)
 
     def generate_random_story_idea(self, genre: str = "", style: str = "") -> str:
         """随机生成故事创意"""
+        self._current_method_name = "generate_random_story_idea"
         genre_hint = f"类型偏好: {GENRE_NAMES.get(genre, genre)}" if genre else "任意类型"
         style_hint = f"风格偏好: {style}" if style else "任意风格"
 
-        prompt = f"""你是一位富有创意的故事策划师。请随机生成一个有趣的短视频故事创意。
+        default_prompt = f"""你是一位富有创意的故事策划师。请随机生成一个有趣的短视频故事创意。
 
 {genre_hint}
 {style_hint}
@@ -163,6 +732,13 @@ class GeminiClient:
 4. 50-100字的简短描述
 
 直接输出故事创意，不要任何额外说明。"""
+
+        prompt = self._get_prompt(
+            "generate_random_story_idea",
+            default_prompt,
+            genre_hint=genre_hint,
+            style_hint=style_hint
+        )
 
         return self._generate(prompt, temperature=1.0).strip()
 
@@ -188,6 +764,7 @@ class GeminiClient:
 
         返回镜头列表
         """
+        self._current_method_name = "generate_storyboard"
         import math
 
         # 计算分镜数量
@@ -274,6 +851,7 @@ class GeminiClient:
         style: str
     ) -> str:
         """扩展单个镜头的画面描述"""
+        self._current_method_name = "expand_shot_description"
         prompt = f"""请帮助扩展和优化以下镜头的画面描述，使其更加详细和生动。
 
 【当前镜头信息】
@@ -324,34 +902,40 @@ class GeminiClient:
                 - i2v: 图生视频提示词（仅首帧）
                 - i2v_fl: 图生视频提示词（首尾帧）
         """
-        # 各平台的提示词风格指南
-        platform_guides = {
-            "kling": """【可灵 Kling 提示词风格】
+        self._current_method_name = "generate_video_prompt"
+
+        # 尝试从数据库获取平台指南
+        platform_guide_template = self._get_template(f"platform_guide_{platform}")
+        if platform_guide_template:
+            platform_guide = platform_guide_template
+        else:
+            # 使用默认的平台指南
+            platform_guides = {
+                "kling": """【可灵 Kling 提示词风格】
 - 支持中英文，推荐使用详细的场景描述
 - 支持通过<<<image_1>>>等引用图片
 - 格式: [主体] + [动作] + [场景] + [风格] + [镜头]
 - 示例: 一位年轻女子在樱花树下微笑，春日午后，柔和的阳光，电影级画质，中景镜头""",
 
-            "tongyi": """【通义万相 Tongyi 提示词风格】
+                "tongyi": """【通义万相 Tongyi 提示词风格】
 - 支持中文，描述要清晰具体
 - 支持多镜头叙事（wan2.6模型）
 - 格式: 清晰描述场景、人物、动作、氛围
 - 示例: 城市街头，一个穿着白色连衣裙的女孩转身微笑，背景是霓虹灯闪烁的夜景，电影感画面""",
 
-            "jimeng": """【即梦 Jimeng 提示词风格】
+                "jimeng": """【即梦 Jimeng 提示词风格】
 - 支持中英文混合
 - Pro版支持多镜头叙事
 - 格式: 详细的视觉描述 + 风格关键词
 - 示例: 镜头1：清晨的山间，云雾缭绕；镜头2：一只白鹤展翅飞过湖面""",
 
-            "hailuo": """【海螺 Hailuo 提示词风格】
+                "hailuo": """【海螺 Hailuo 提示词风格】
 - 支持中英文
 - 支持运镜指令: [左移], [右移], [推进], [拉远], [上升], [下降], [左摇], [右摇], [固定]等
 - 格式: 场景描述 + [运镜指令]
 - 示例: 女孩站在海边，望向远方的夕阳 [推进]，海风吹动她的长发 [右摇]"""
-        }
-
-        platform_guide = platform_guides.get(platform, "使用清晰详细的中文描述")
+            }
+            platform_guide = platform_guides.get(platform, "使用清晰详细的中文描述")
 
         # 镜头运动映射到海螺指令
         hailuo_camera_map = {
@@ -492,6 +1076,7 @@ class GeminiClient:
                 }
             ]
         """
+        self._current_method_name = "analyze_episode_for_character_events"
         if not episode.shots:
             return []
 
@@ -553,6 +1138,7 @@ class GeminiClient:
                 "changes_summary": "修改摘要"
             }
         """
+        self._current_method_name = "edit_episode_with_instruction"
         prompt = f"""你是一位专业的编剧。请根据用户的指令修改以下剧集大纲。
 
 【项目信息】
@@ -614,6 +1200,7 @@ class GeminiClient:
                 }
             ]
         """
+        self._current_method_name = "analyze_edit_impact"
         # 构建其他剧集的上下文
         other_episodes_context = ""
         for ep in all_episodes:
@@ -707,6 +1294,7 @@ class GeminiClient:
                 "explanation": "修改说明"
             }
         """
+        self._current_method_name = "generate_consistency_fix"
         prompt = f"""你是一位专业的剧本顾问。请修复以下一致性问题。
 
 【项目信息】
@@ -752,6 +1340,7 @@ class GeminiClient:
         Returns:
             问题列表
         """
+        self._current_method_name = "batch_check_consistency"
         # 构建完整的剧情时间线
         timeline = ""
         for ep in sorted(episodes, key=lambda x: x.episode_number):
@@ -813,6 +1402,7 @@ class GeminiClient:
 
     def polish_text(self, text: str, style: str = "") -> str:
         """润色文本"""
+        self._current_method_name = "polish_text"
         prompt = f"""请润色以下文本，使其更加流畅和生动。
 
 原文:
@@ -826,6 +1416,7 @@ class GeminiClient:
 
     def test_connection(self) -> Dict[str, Any]:
         """测试API连接"""
+        self._current_method_name = "test_connection"
         try:
             response = self._generate("请回复'连接成功'", temperature=0)
             return {
