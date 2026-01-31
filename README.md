@@ -20,6 +20,33 @@
 | 即梦 (Jimeng) | ✅ | ✅ | ❌ | ⚠️ |
 | 通义万相 (Tongyi) | ✅ | ✅ | ❌ | ⚠️ |
 
+## 功能预览
+
+### 1. 系统首页
+![Homepage](docs/img/01-homepage.png)
+
+### 2. 创作流程
+> 支持从新建项目、填写需求、剧本审核到角色设计的完整链路
+
+| 步骤 1: 新建项目 | 步骤 2: 填写需求 |
+|:--:|:--:|
+| ![New Workflow](docs/img/02-new-workflow.png) | ![Form Filled](docs/img/03-form-filled.png) |
+
+| 步骤 3: 剧本审核 | 步骤 4: 角色设计 |
+|:--:|:--:|
+| ![Story Outline](docs/img/04-story-outline-approval.png) | ![Character Design](docs/img/05-character-design.png) |
+
+| 步骤 5: 分集剧情 | 步骤 6: 分镜设计 |
+|:--:|:--:|
+| ![Episodes](docs/img/06-episodes.png) | ![Storyboard](docs/img/07-storyboard.png) |
+
+| 步骤 7: 提示词生成 | 步骤 8: 视频生成 |
+|:--:|:--:|
+| ![Video Prompts](docs/img/08-video-prompts.png) | ![Video Generation](docs/img/09-video-generation.png) |
+
+### 3. 完成效果
+![Completed Project](docs/img/10-completed-project.png)
+
 ## 快速开始
 
 ### 环境配置
