@@ -9,3 +9,11 @@ pandas>=2.0.0
 
 # Story Generator
 google-genai>=1.0.0
+
+# MCP Servers (Multi-Agent System)
+fastmcp>=2.0.0
+
+# LangChain / LangGraph (Multi-Agent System)
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-google-genai>=2.0.0

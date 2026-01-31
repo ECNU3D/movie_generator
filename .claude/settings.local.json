@@ -23,7 +23,14 @@
       "Bash(python test_story_generator.py:*)",
       "WebFetch(domain:googleapis.github.io)",
       "Bash(python -c:*)",
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "WebFetch(domain:docs.langchain.com)",
+      "Bash(pip3 install:*)",
+      "Bash(source:*)",
+      "Bash(python scripts/test_mcp_servers.py:*)",
+      "Bash(python scripts/run_mcp_servers.py:*)",
+      "Bash(python scripts/test_skills_with_agent.py:*)",
+      "Bash(python:*)"
     ]
   }
 }
