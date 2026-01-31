@@ -180,3 +180,13 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 gemini_api_key
+
+# Project specific
+*.db
+comparison_output/
+test_output/
+output/
+data/
+.playwright-mcp/
+.mp4
+.claude/

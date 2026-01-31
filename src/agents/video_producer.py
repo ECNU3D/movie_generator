@@ -187,8 +187,12 @@ Output the prompt directly, no additional explanation."""
         return response.strip()
 
     def _generate_videos(self, state: AgentState) -> AgentState:
-        """Submit video generation tasks."""
-        self.log("Submitting video generation tasks...", state)
+        """
+        Initialize video tasks as pending, waiting for user to manually trigger generation.
+
+        This allows users to generate videos one by one to avoid rate limiting.
+        """
+        self.log("Initializing video tasks (manual generation mode)...", state)
 
         if not state.video_prompts:
             return self.set_error("No video prompts available", state)
@@ -198,67 +202,95 @@ Output the prompt directly, no additional explanation."""
         # Preserve existing tasks when resuming
         video_tasks = dict(state.video_tasks) if state.video_tasks else {}
 
-        try:
-            provider = self._get_provider(platform)
-
-            for shot_id, prompt in state.video_prompts.items():
-                # Skip already submitted tasks
-                if shot_id in video_tasks and video_tasks[shot_id].get("status") == "submitted":
-                    self.log(f"Skipping {shot_id} (already submitted)", state)
-                    continue
-
-                self.log(f"Submitting {shot_id} to {platform}...", state)
-
-                # Retry logic for SSL errors
-                max_retries = 3
-                last_error = None
-                result = None
-
-                for attempt in range(max_retries):
-                    try:
-                        if attempt > 0:
-                            import time
-                            self.log(f"Retry {attempt + 1}/{max_retries} for {shot_id}...", state)
-                            time.sleep(2)  # Wait before retry
-
-                        # Submit text-to-video task
-                        result = provider.submit_text_to_video(prompt)
-                        break  # Success, exit retry loop
-
-                    except Exception as e:
-                        last_error = e
-                        error_str = str(e).lower()
-                        # Only retry on SSL/connection errors
-                        if 'ssl' in error_str or 'connection' in error_str or 'timeout' in error_str:
-                            continue
-                        else:
-                            raise  # Non-retryable error
-
-                if result is None and last_error:
-                    raise last_error
-
-                # VideoTask is a dataclass, access attributes directly
+        # Initialize all prompts as pending tasks (not auto-submitting)
+        for shot_id, prompt in state.video_prompts.items():
+            if shot_id not in video_tasks:
                 video_tasks[shot_id] = {
-                    "task_id": result.task_id if result else None,
-                    "status": "submitted",
+                    "task_id": None,
+                    "status": "pending",
                     "platform": platform,
                     "prompt": prompt,
                 }
 
-            state.video_tasks = video_tasks
+        state.video_tasks = video_tasks
 
-            # Move to review phase
-            state.phase = WorkflowPhase.REVIEW
-            state.pending_approval = True
-            state.approval_type = "video_tasks"
-            state.approval_data = {"tasks": video_tasks}
+        # Move to review phase - user can manually generate videos one by one
+        state.phase = WorkflowPhase.REVIEW
+        state.pending_approval = True
+        state.approval_type = "video_tasks"
+        state.approval_data = {"tasks": video_tasks}
 
-            self.log(f"Submitted {len(video_tasks)} video generation tasks", state)
+        self.log(f"Initialized {len(video_tasks)} video tasks (click 'Generate' to submit each one)", state)
+
+        return state
+
+    def submit_single_video(self, state: AgentState, shot_id: str) -> AgentState:
+        """Submit a single video generation task."""
+        import time
+
+        if shot_id not in state.video_prompts:
+            return self.set_error(f"Shot {shot_id} not found in prompts", state)
+
+        prompt = state.video_prompts[shot_id]
+        platform = state.request.target_platform if state.request else "kling"
+
+        self.log(f"Submitting {shot_id} to {platform}...", state)
+
+        try:
+            provider = self._get_provider(platform)
+
+            # Retry logic
+            max_retries = 3
+            last_error = None
+            result = None
+
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        self.log(f"Retry {attempt + 1}/{max_retries} for {shot_id}...", state)
+                        time.sleep(3)
+
+                    result = provider.submit_text_to_video(prompt)
+                    break
+
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    if 'ssl' in error_str or 'connection' in error_str or 'timeout' in error_str or 'rate' in error_str or '429' in error_str:
+                        self.log(f"Retryable error for {shot_id}: {str(e)}", state)
+                        time.sleep(5)
+                        continue
+                    else:
+                        raise
+
+            if result is None and last_error:
+                state.video_tasks[shot_id] = {
+                    "task_id": None,
+                    "status": "failed",
+                    "platform": platform,
+                    "prompt": prompt,
+                    "error": str(last_error),
+                }
+                return self.set_error(f"Failed to submit {shot_id}: {str(last_error)}", state)
+
+            state.video_tasks[shot_id] = {
+                "task_id": result.task_id,
+                "status": "submitted",
+                "platform": platform,
+                "prompt": prompt,
+            }
+
+            self.log(f"Successfully submitted {shot_id}, task_id: {result.task_id}", state)
 
         except Exception as e:
-            # Save partial progress
-            state.video_tasks = video_tasks
-            return self.set_error(f"Failed to submit video generation: {str(e)}", state)
+            state.video_tasks[shot_id] = {
+                "task_id": None,
+                "status": "failed",
+                "platform": platform,
+                "prompt": prompt,
+                "error": str(e),
+            }
+            return self.set_error(f"Failed to submit {shot_id}: {str(e)}", state)
 
         return state
 

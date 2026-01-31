@@ -4,7 +4,10 @@
 """
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Add project root to path
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 
 from src.story_generator import (
     Database,
@@ -24,7 +27,7 @@ import json
 
 # 读取 Gemini API Key
 def load_api_key():
-    key_file = os.path.join(os.path.dirname(__file__), "gemini_api_key")
+    key_file = os.path.join(PROJECT_ROOT, "gemini_api_key")
     if os.path.exists(key_file):
         with open(key_file, 'r') as f:
             return f.read().strip()

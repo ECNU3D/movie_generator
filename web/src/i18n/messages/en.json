@@ -1,0 +1,122 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "retry": "Retry",
+    "back": "Back",
+    "viewAll": "View All",
+    "noData": "No data"
+  },
+  "nav": {
+    "home": "Home",
+    "projects": "Projects",
+    "newProject": "New Project",
+    "settings": "Settings"
+  },
+  "home": {
+    "title": "AI Movie Generator",
+    "subtitle": "AI-driven video generation system, from idea to video",
+    "newProject": "New Project",
+    "quickStart": "Quick Start",
+    "quickStartDesc": "Create a new AI video project with fully automated workflow from story concept to video generation. Supports multiple platforms including Kling, Hailuo, and Jimeng.",
+    "createProject": "Create New Project",
+    "viewAllProjects": "View All Projects",
+    "recentProjects": "Recent Projects",
+    "noProjects": "No Projects",
+    "noProjectsDesc": "Create your first AI video project",
+    "createFirstProject": "Create First Project"
+  },
+  "stats": {
+    "total": "Total Projects",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed"
+  },
+  "workflow": {
+    "title": "Create New Project",
+    "idea": "Story Idea",
+    "ideaPlaceholder": "Enter your story idea, e.g., A robot searching for the last hope of humanity in a post-apocalyptic world...",
+    "ideaRequired": "Please enter a story idea",
+    "genre": "Genre",
+    "episodes": "Episodes",
+    "duration": "Episode Duration",
+    "characters": "Characters",
+    "platform": "Video Platform",
+    "style": "Style Description (Optional)",
+    "stylePlaceholder": "Describe visual style, e.g., cyberpunk style, neon lights, rainy night atmosphere",
+    "workMode": "Work Mode",
+    "interactiveMode": "Interactive Mode",
+    "interactiveModeDesc": "Review each phase, edit and adjust as needed",
+    "autonomousMode": "Autonomous Mode",
+    "autonomousModeDesc": "Fully automatic generation, no manual intervention",
+    "start": "Start Creating",
+    "createFailed": "Creation failed"
+  },
+  "phases": {
+    "init": "Initializing",
+    "story_outline": "Story Outline",
+    "character_design": "Character Design",
+    "episode_writing": "Episode Writing",
+    "storyboard": "Storyboard",
+    "video_prompts": "Video Prompts",
+    "video_generation": "Video Generation",
+    "review": "Review",
+    "completed": "Completed",
+    "error": "Error"
+  },
+  "status": {
+    "running": "Running",
+    "paused": "Paused",
+    "completed": "Completed",
+    "failed": "Failed",
+    "pending": "Pending",
+    "processing": "Processing"
+  },
+  "approval": {
+    "approve": "Approve",
+    "reject": "Reject",
+    "feedback": "Feedback",
+    "feedbackPlaceholder": "Enter your suggestions...",
+    "waitingApproval": "Waiting for Approval"
+  },
+  "video": {
+    "status": "Status",
+    "platform": "Platform",
+    "download": "Download",
+    "downloadAll": "Download All",
+    "regenerate": "Regenerate",
+    "refresh": "Refresh Status",
+    "compare": "Multi-platform Compare",
+    "selectPlatform": "Select Platform",
+    "videoGeneration": "Video Generation",
+    "totalProgress": "Total Progress",
+    "shotCompleted": "Completed"
+  },
+  "genres": {
+    "drama": "Drama",
+    "comedy": "Comedy",
+    "action": "Action",
+    "sci-fi": "Sci-Fi",
+    "fantasy": "Fantasy",
+    "romance": "Romance",
+    "horror": "Horror",
+    "thriller": "Thriller"
+  },
+  "platforms": {
+    "kling": "Kling",
+    "hailuo": "Hailuo",
+    "jimeng": "Jimeng",
+    "tongyi": "Tongyi"
+  },
+  "units": {
+    "episode": "ep",
+    "second": "s",
+    "character": ""
+  }
+}
