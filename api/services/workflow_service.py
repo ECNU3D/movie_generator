@@ -22,7 +22,7 @@ class WorkflowService:
     Wraps the synchronous PersistentWorkflowRunner for async API usage.
     """
 
-    def __init__(self, db_path: str = "story_generator.db"):
+    def __init__(self, db_path: str = "data/workflow_sessions.db"):
         self.db_path = db_path
         self.session_manager = SessionManager(db_path)
         self._runners: Dict[str, PersistentWorkflowRunner] = {}

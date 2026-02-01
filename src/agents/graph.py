@@ -336,7 +336,7 @@ class PersistentWorkflowRunner:
     - Session listing and management
     """
 
-    def __init__(self, api_key: Optional[str] = None, db_path: str = "story_generator.db"):
+    def __init__(self, api_key: Optional[str] = None, db_path: str = "data/workflow_sessions.db"):
         from .session import SessionManager, SessionStatus
 
         self.api_key = api_key

@@ -18,7 +18,7 @@ _executor = ThreadPoolExecutor(max_workers=4)
 class VideoService:
     """Service for video generation operations."""
 
-    def __init__(self, db_path: str = "story_generator.db"):
+    def __init__(self, db_path: str = "data/workflow_sessions.db"):
         self.db_path = db_path
         self.session_manager = SessionManager(db_path)
         self._producer = VideoProducerAgent()

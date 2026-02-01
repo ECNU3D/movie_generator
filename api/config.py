@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     ]
 
     # Database
-    DATABASE_PATH: str = "story_generator.db"
+    DATABASE_PATH: str = "data/workflow_sessions.db"
 
     # Video platforms
     AVAILABLE_PLATFORMS: List[str] = ["kling", "hailuo", "jimeng", "tongyi"]

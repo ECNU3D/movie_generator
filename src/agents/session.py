@@ -89,8 +89,11 @@ class SessionManager:
     - State serialization/deserialization
     """
 
-    def __init__(self, db_path: str = "story_generator.db"):
+    def __init__(self, db_path: str = "data/workflow_sessions.db"):
         self.db_path = db_path
+        # Ensure data directory exists
+        from pathlib import Path
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_tables()
 
     def _get_connection(self) -> sqlite3.Connection:

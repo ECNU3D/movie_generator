@@ -105,7 +105,8 @@ src/story_generator/
 
 ## 数据存储
 
-- 数据库: `story_generator.db` (SQLite)
+- 数据库: `data/story_generator.db` (SQLite)
+- 自动创建表结构
 - 支持多项目管理
 - 自动保存编辑历史
 
