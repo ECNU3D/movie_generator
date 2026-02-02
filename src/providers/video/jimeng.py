@@ -20,8 +20,8 @@ from typing import Optional
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from .base import VideoProvider, VideoTask, TaskStatus
-from .config import get_config
+from ..base import VideoProvider, VideoTask, TaskStatus
+from ..config import get_config
 
 
 @dataclass

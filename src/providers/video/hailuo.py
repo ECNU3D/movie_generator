@@ -10,8 +10,8 @@ import requests
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from .base import VideoProvider, VideoTask, TaskStatus
-from .config import get_config
+from ..base import VideoProvider, VideoTask, TaskStatus
+from ..config import get_config
 
 
 class HailuoProvider(VideoProvider):

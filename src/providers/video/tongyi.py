@@ -17,8 +17,8 @@ from datetime import datetime
 from typing import Optional, Literal
 from dataclasses import dataclass
 
-from .base import VideoProvider, VideoTask, TaskStatus
-from .config import get_config
+from ..base import VideoProvider, VideoTask, TaskStatus
+from ..config import get_config
 
 
 @dataclass

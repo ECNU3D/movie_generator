@@ -1,0 +1,1437 @@
+# 文本生成图像
+
+通过文生图API，您可以基于文本描述创造出全新的图像。阿里云百炼提供两大系列模型：
+
+通义千问（Qwen-Image）: 擅长渲染复杂的中英文文本。
+通义万相（Wan系列）: 用于生成写实图像和摄影级视觉效果。
+在线体验：北京｜新加坡
+
+模型效果
+
+通义千问（Qwen-image）
+
+复杂文字
+image
+超长段落
+image
+复杂布局
+image
+电商海报
+image
+插画设计
+qwenimage
+写实摄影
+image
+点击查看提示词
+通义万相
+
+人像写真
+p1023408-转换自-png
+写实摄影
+p1023409-转换自-png
+绘画流派
+p1023411
+文字生成
+p1023399
+海报设计
+image.png
+组图生成
+p1023424-转换自-png
+点击查看提示词
+支持的模型
+
+通义千问文生图
+通义万相文生图
+模型选型
+
+复杂文字渲染（如海报、对联）：首选qwen-image-max、wan2.6-t2i。
+写实场景和摄影风格（通用场景）：可选通义万相模型，如wan2.6-t2i、wan2.5-t2i-preview。
+需要自定义输出图像分辨率：推荐通义万相模型，如wan2.2-t2i-flash，支持 [512, 1440] 像素范围内的任意宽高组合。
+通义千问Qwen-Image仅支持5种固定尺寸：1664*928(16:9)、928*1664(9:16)、1328*1328(1:1)、1472*1104(4:3)、1104*1472(3:4)。
+成本极度敏感，可接受基础质量：可选择wanx2.0-t2i-turbo，价格较低，请参见计费与限流。
+快速开始
+
+前提条件
+
+在调用前，请获取API Key，再配置API Key到环境变量。如果通过DashScope SDK进行调用，还需要安装SDK。
+
+示例代码
+
+调用方式说明：通义千问Qwen-Image支持同步调用，其中qwen-image-plus、qwen-image模型支持异步调用，通义万相仅支持异步调用。
+
+异步调用：两者API 兼容，只需更改 model 参数即可轻松切换。例如，使用通义万相模型时，将 model 设置为 "wan2.2-t2i-flash"。
+同步调用：仅通义千问Qwen-Image支持，调用请参见通义千问 Qwen-Image API参考。
+下文示例均为异步调用方式。示例代码以 qwen-image-plus 为例，但同样适用于通义万相模型。
+
+SDK 在底层封装了异步处理逻辑，上层接口表现为同步调用（即单次请求并等待最终结果返回）；而 curl 示例则对应两个独立的异步 API 接口：一个用于提交任务，另一个用于查询结果。
+PythonJavacurl
+请求示例
+
+ 
+from http import HTTPStatus
+from urllib.parse import urlparse, unquote
+from pathlib import PurePosixPath
+import requests
+from dashscope import ImageSynthesis
+import os
+import dashscope
+
+# 以下为北京地域url，若使用新加坡地域的模型，需将url替换为：https://dashscope-intl.aliyuncs.com/api/v1
+dashscope.base_http_api_url = 'https://dashscope.aliyuncs.com/api/v1'
+
+prompt = "一副典雅庄重的对联悬挂于厅堂之中，房间是个安静古典的中式布置，桌子上放着一些青花瓷，对联上左书“义本生知人机同道善思新”，右书“通云赋智乾坤启数高志远”， 横批“智启通义”，字体飘逸，在中间挂着一幅中国风的画作，内容是岳阳楼。"
+
+# 新加坡和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
+# 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
+api_key = os.getenv("DASHSCOPE_API_KEY")
+
+print('----同步调用，请等待任务执行----')
+rsp = ImageSynthesis.call(api_key=api_key,
+                          model="qwen-image-plus", # 当前仅qwen-image-plus、qwen-image模型支持异步接口
+                          prompt=prompt,
+                          negative_prompt=" ",
+                          n=1,
+                          size='1664*928',
+                          prompt_extend=True,
+                          watermark=False)
+print(f'response: {rsp}')
+if rsp.status_code == HTTPStatus.OK:
+    # 在当前目录下保存图像
+    for result in rsp.output.results:
+        file_name = PurePosixPath(unquote(urlparse(result.url).path)).parts[-1]
+        with open('./%s' % file_name, 'wb+') as f:
+            f.write(requests.get(result.url).content)
+else:
+    print(f'同步调用失败, status_code: {rsp.status_code}, code: {rsp.code}, message: {rsp.message}')
+响应示例
+
+url 有效期24小时，请及时下载图像。
+ 
+{
+    "status_code": 200,
+    "request_id": "03b1ef03-480d-4ea5-ba52-xxxxxx",
+    "code": null,
+    "message": "",
+    "output": {
+        "task_id": "3cefd9bc-fcb2-4de9-a8bc-xxxxxx",
+        "task_status": "SUCCEEDED",
+        "results": [
+            {
+                "url": "https://dashscope-result-sz.oss-cn-shenzhen.aliyuncs.com/xxx.png?Expires=xxxxxx",
+                "orig_prompt": "一副典雅庄重的对联悬挂于厅堂之中，房间是个安静古典的中式布置，桌子上放着一些青花瓷，对联上左书“义本生知人机同道善思新”，右书“通云赋智乾坤启数高志远”， 横批“智启通义”，字体飘逸，在中间挂着一幅中国风的画作，内容是岳阳楼。",
+                "actual_prompt": "一副典雅庄重的对联悬挂于中式厅堂正中，整体空间为安静、古色古香的中国传统布置。厅堂内木质家具沉稳大气，墙面为淡色仿古纸张质感，地面铺设深色木质地板，营造出宁静而庄重的氛围。对联以飘逸的书法字体书写，左侧上联为“义本生知人机同道善思新”，右侧下联为“通云赋智乾坤启数高志远”，横批“智启通义”，文字排列对称，墨色深邃，书法流畅有力，体现出浓厚的文化气息与哲思内涵。\n\n对联中央悬挂一幅中国风画作，内容为岳阳楼，楼阁依水而建，背景为浩渺洞庭湖，远处山峦起伏，云雾缭绕，画面采用传统水墨技法绘制，笔触细腻，意境悠远。画作下方为一张中式红木长桌，桌上错落摆放着几件青花瓷器，包括花瓶与茶具，瓷器釉色清透，纹饰典雅，与整体环境风格和谐统一。整体画面风格为中国古典水墨风，空间布局层次分明，氛围宁静雅致，展现出浓厚的东方文化底蕴。"
+            }
+        ],
+        "submit_time": "2025-09-09 13:41:54.041",
+        "scheduled_time": "2025-09-09 13:41:54.087",
+        "end_time": "2025-09-09 13:42:22.596"
+    },
+    "usage": {
+        "image_count": 1
+    }
+}
+关键能力
+
+1. 指令遵循（提示词）
+
+参数：input.prompt（必选）、input.negative_prompt（可选）。
+
+prompt（正向提示词）：描述希望在画面中看到的内容、主体、场景、风格、光照和构图。文生图的核心控制参数。
+negative_prompt（反向提示词）：描述不希望在画面中出现的内容，如“模糊”、“多余的手指”等。仅用于辅助优化生成质量。
+撰写技巧：一个结构化的 Prompt 通常能带来更好的效果，撰写技巧请参见文生图Prompt指南。
+
+2. 开启prompt智能改写
+
+参数: parameters.prompt_extend (bool, 默认为 true)。
+
+此功能可自动扩展和优化较短的Prompt，提升出图效果。开启此功能额外耗时 3-5 秒。此耗时为使用大模型改写文本。
+
+实践建议：
+
+建议开启：当输入 Prompt 较简洁或宽泛时，此功能可显著提升图像效果。
+建议关闭：若需控制画面细节、或已提供详细描述，或对响应延迟敏感。请将参数 prompt_extend 显式设为 false。
+3. 设置输出图像分辨率
+
+参数: parameters.size (string)，格式为 "宽*高"。
+
+通义千问 Qwen-Image：仅支持以下 5 种固定的分辨率：
+
+1664*928（默认值）：16:9。
+1472*1104：4:3 。
+1328*1328：1:1。
+1104*1472：3:4。
+928*1664：9:16。
+通义万相 V2 版模型 (2.0 及以上版本)：支持在 [512, 1440] 像素范围内任意组合宽高，总像素不超过 1440*1440。常用分辨率：
+
+1024*1024（默认值）：1:1。
+1440*810: 16:9。
+810*1440: 9:16。
+1440*1080: 4:3。
+1080*1440: 3:4。
+应用于生产环境
+
+容错策略
+处理限流：当 API 返回 Throttling 错误码或 HTTP 429 状态码时，表明已触发限流，限流处理请参见限流。
+异步任务轮询：轮询查询异步任务结果时，建议采用合理的轮询策略（如前30秒每3秒一次，之后拉长间隔），避免因过于频繁的请求而触发限流。为任务设置一个最终超时时间（如 2 分钟），超时后标记为失败。
+风险防范
+结果持久化：API 返回的图片 URL 有 24 小时有效期。生产系统必须在获取 URL 后立即下载图片，并转存至您自己的持久化存储服务中（如阿里云对象存储 OSS）。
+内容安全审核：所有 prompt 和 negative_prompt 都会经过内容安全审核。若输入内容不合规，请求将被拦截并返回 DataInspectionFailed 错误。
+生成内容的版权与合规风险：请确保您的提示词内容符合相关法律法规。生成包含品牌商标、名人肖像、受版权保护的 IP 形象等内容可能涉及侵权风险，请您自行评估并承担相应责任。
+API文档
+
+通义千问 Qwen-Image
+通义万相-文生图V2
+计费与限流
+
+模型免费额度和计费单价请参见图像生成。
+
+计费规则
+
+计费项：按成功生成的 图像张数 计费，采用按量后付费模式。
+计费公式：费用 = 计费单价 × 图像张数。
+抵扣顺序：优先消耗免费额度。额度用尽后，默认转为按量付费。
+您可开启“免费额度用完即停”功能，以避免免费额度耗尽后产生额外费用。详情请参见免费额度。
+失败不计费：模型调用失败或处理错误不产生任何费用，也不消耗免费额度。
+免费额度
+
+关于免费额度的领取、查询、使用方法等详情，请参见免费额度。
+
+调用量查询
+
+模型调用完约一小时后，请在模型观测页面，查看调用量、调用次数、成功率等指标。
+
+限流
+
+模型限流规则及常见问题，请参见限流。
+
+错误码
+
+如果模型调用失败并返回报错信息，请参见错误信息进行解决。
+
+常见问题
+
+Q: 图片 URL 多久会失效？我应该如何永久保存图片？
+
+A: 图片 URL 的有效期为 24 小时。您必须在获取到 URL 后，立即通过程序下载图片，并将其保存到您自己的持久化存储中，例如本地服务器或阿里云对象存储 OSS。
+
+Q: 调用API返回DataInspectionFailed错误，如何处理？
+
+A: 该错误表示输入文本触发了内容安全审核。请检查并修改prompt或negative_prompt中的文本，移除可能违规的内容后重试。
+
+Q: prompt_extend参数应该开启还是关闭？
+
+A: 当输入的prompt比较简洁或希望模型发挥更多创意时，建议保持开启（默认）。当prompt已经非常详细、专业，或对API响应延迟有严格要求时，建议显式设置为false。
+
+Q: 如何提升图像中文字的生成效果？
+
+A: 如果业务强依赖于在图像中生成清晰、准确的文字，请使用qwen-image-plus模型，它是为此类场景专门训练的。
+
+# 图像编辑-通义千问
+通义千问-图像编辑模型支持多图输入和多图输出，可精确修改图内文字、增删或移动物体、改变主体动作、迁移图片风格及增强画面细节。
+
+快速开始
+
+本示例将演示如何使用qwen-image-edit-max模型，根据3张输入图像和提示词，生成2张编辑后的图像。
+
+输入提示词：图1中的女生穿着图2中的黑色裙子按图3的姿势坐下。
+输入图像1
+输入图像2
+输入图像3
+输出图像（多张图像）
+image99
+image98
+image89
+image100
+imageout2
+在调用前，您需要获取API Key，再配置API Key到环境变量。
+
+如需通过SDK进行调用，请安装DashScope SDK。目前，该SDK已支持Python和Java。
+
+通义千问-图像编辑模型系列模型均支持传入 1-3 张图像。其中，qwen-image-edit-max和qwen-image-edit-plus系列模型支持生成 1-6 张图像，qwen-image-edit 模型仅支持生成1张图像。生成的图像URL链接有效期为24小时，请及时通过URL下载图像到本地。
+
+PythonJavacurl
+ 
+import json
+import os
+from dashscope import MultiModalConversation
+import dashscope
+
+# 以下为中国（北京）地域url，若使用新加坡地域的模型，需将url替换为：https://dashscope-intl.aliyuncs.com/api/v1
+dashscope.base_http_api_url = 'https://dashscope.aliyuncs.com/api/v1'
+
+# 模型支持输入1-3张图片
+messages = [
+    {
+        "role": "user",
+        "content": [
+            {"image": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/thtclx/input1.png"},
+            {"image": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/iclsnx/input2.png"},
+            {"image": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/gborgw/input3.png"},
+            {"text": "图1中的女生穿着图2中的黑色裙子按图3的姿势坐下"}
+        ]
+    }
+]
+
+# 新加坡和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
+# 若没有配置环境变量，请用百炼 API Key 将下行替换为：api_key="sk-xxx"
+api_key = os.getenv("DASHSCOPE_API_KEY")
+
+# qwen-image-edit-max、qwen-image-edit-plus系列支持输出1-6张图片，此处以2张为例
+response = MultiModalConversation.call(
+    api_key=api_key,
+    model="qwen-image-edit-max",
+    messages=messages,
+    stream=False,
+    n=2,
+    watermark=False,
+    negative_prompt=" ",
+    prompt_extend=True,
+    size="1024*1536",
+)
+
+if response.status_code == 200:
+    # 如需查看完整响应，请取消下行注释
+    # print(json.dumps(response, ensure_ascii=False))
+    for i, content in enumerate(response.output.choices[0].message.content):
+        print(f"输出图像{i+1}的URL:{content['image']}")
+else:
+    print(f"HTTP返回码：{response.status_code}")
+    print(f"错误码：{response.code}")
+    print(f"错误信息：{response.message}")
+    print("请参考文档：https://help.aliyun.com/zh/model-studio/error-code")
+响应示例
+通过URL下载图像到本地
+模型选型建议
+
+qwen-image-edit-max 系列：旗舰级图像编辑模型，具备更稳定、丰富的编辑能力，推荐在对编辑质量有高要求的场景中使用。
+qwen-image-edit-plus 系列：提供强大的通用编辑能力，在文本编辑、工业设计、几何推理及角色一致性方面表现突出。
+qwen-image-edit不支持多图输出、调整输出图像分辨率和提示词智能优化等功能，推荐替换为qwen-image-edit-plus模型。
+各地域支持的模型请参见模型列表。
+
+输入说明
+
+输入图像（messages）
+
+messages 是一个数组，且必须仅包含一个对象。该对象需包含 role 和 content 属性。其中role必须设置为user，content需要同时包含image（1-3张图像）和text（一条编辑指令）。
+
+输入图片必须满足以下要求：
+
+图片格式：JPG、JPEG、PNG、BMP、TIFF、WEBP和GIF。
+输出图像为PNG格式，对于GIF动图，仅处理其第一帧。
+图片分辨率：为获得最佳效果，建议图像的宽和高均在384像素至3072像素之间。分辨率过低可能导致生成效果模糊，过高则会增加处理时长。
+文件大小：单张图片文件大小不得超过 10MB。
+ 
+"messages": [
+    {
+        "role": "user",
+        "content": [
+            { "image": "图1的公网URL或Base64数据" },
+            { "image": "图2的公网URL或Base64数据" },
+            { "image": "图3的公网URL或Base64数据" },
+            { "text": "您的编辑指令，例如：'图1中的女生穿着图2中的黑色裙子按图3的姿势坐下'" }
+        ]
+    }
+]
+图像输入顺序
+
+多图输入时，按照数组顺序定义图像顺序，编辑指令需要与 content 中的图像顺序对应（如“图1”、“图2”）。
+
+输入图像1
+输入图像2
+输出图像
+image95
+image96
+5
+将图1中女生的衣服替换为图2中女生的衣服
+4
+将图2中女生的衣服替换为图1中女生的衣服
+图像传入方式
+
+公网URL
+
+提供一个公网可访问的图像地址，支持 HTTP 或 HTTPS 协议。本地文件请参见上传文件获取临时URL。
+示例值：https://xxxx/img.png。
+Base64编码
+
+将图像文件转换为 Base64 编码字符串，并按格式拼接：data:{mime_type};base64,{base64_data}。
+
+{mime_type}：图像的媒体类型，需与文件格式对应。
+{base64_data}：文件经过 Base64 编码后的字符串。
+示例值：data:image/jpeg;base64,GDU7MtCZz...（示例已截断，仅做演示）
+完整示例代码请参见Python SDK调用、Java SDK调用。
+
+更多参数
+
+可以通过以下可选参数调整生成效果：
+
+n：指定输出图像数量，默认值为1。qwen-image-edit-max和qwen-image-edit-plus系列模型支持输出1-6张图片，qwen-image-edit模型仅支持输出1张图片。
+negative_prompt（反向提示词）：描述不希望在画面中出现的内容，如“模糊”、“多余的手指”等，用于辅助优化生成质量。
+watermark：是否在图像右下角添加 "Qwen-Image" 水印。默认值为 false。水印样式如下：
+1
+seed：随机数种子。取值范围是[0, 2147483647]。如果不提供，则算法自动生成一个随机数作为种子。使用相同的 seed 值可帮助生成内容保持相对稳定。
+以下可选参数仅qwen-image-edit-max、qwen-image-edit-plus系列模型支持：
+
+size：设置输出图像的分辨率，格式为宽*高，例如"1024*2048"，宽和高的取值范围均为[512, 2048]像素。若不设置，输出图像将保持与原图（多图输入时为最后一张图）相似的长宽比，总像素接近1024*1024分辨率。
+prompt_extend：是否开启prompt智能改写功能，默认值为 true。开启后，模型将优化提示词，对描述性不足、较为简单的prompt提升效果较明显。
+完整参数列表请参考通义千问-图像编辑API。
+
+效果概览
+
+多图融合
+
+输入图像1
+输入图像2
+输入图像3
+输出图像
+image83
+image103
+1
+2
+图1中的女生戴着图2中的项链，左肩挎着图3中的包
+主体一致性保持
+
+输入图像
+输出图像1
+输出图像2
+输出图像3
+image5
+image4
+修改为蓝底证件照，人物穿上白色衬衫，黑色西装，打着条纹领带
+image6
+人物穿上白色衬衫，灰色西装，打着条纹领带，一只手摸着领带，浅色背景
+image7
+人物穿着粗笔刷字体的“千问图像”的黑色卫衣，依靠在护栏边，阳光照在发丝上，身后是大桥和海
+image12
+image13
+把这个空调放在客厅，沙发旁边
+image14
+在空调出风口增加雾气，一直到沙发上，并且增加绿叶。
+image15
+在上方增加白色的手写体"自然新风 畅享呼吸"
+草图创作
+
+输入图像
+输出图像
+image42
+image43
+生成一张图像，符合图1所勾勒出的精致形状，并遵循以下描述：一位年轻的女子在阳光明媚的日子里微笑着，她戴着一副棕色的圆形太阳镜，镜框上有豹纹图案。她的头发被整齐地盘起，耳朵上佩戴着珍珠耳环，脖子上围着一条带有紫色星星图案的深蓝色围巾，穿着一件黑色皮夹克。
+image44
+生成一张图像，符合图1所勾勒出的精致形状，并遵循以下描述：一位年老的老人朝着镜头微笑，他的脸上布满皱纹，头发在风中凌乱，戴着一副圆框的老花镜。脖子上戴着一条破旧的红色围巾，上面有星星图案。穿着一件棉衣。
+文创生成
+
+输入图像
+输出图像
+图片 1
+image23
+让这只熊坐在月亮下（用白色背景上的浅灰弯月轮廓表示），抱着吉他，周围漂浮着小星星和诗句气泡，如“Be Kind”。
+image22
+将这个图案印在一件T恤和一个手提纸袋上。一个女模特正在展示这些物品。这个女生还戴着一顶鸭舌帽，帽子上写着"Be kind”。
+image21
+一个超逼真的1/7比例角色模型，设计为商业产品成品，放置在一台带有白色键盘的iMac电脑桌上。模型站在一个干净、圆形的透明亚克力底座上，没有标签或文字。专业的摄影棚灯光凸显了雕刻细节。在背景的iMac屏幕上，展示同一模型的ZBrush建模过程。在模型旁边，放置一个包装盒，前面带有透明窗户，仅显示内部透明塑料壳，其高度略高于模型，尺寸合理以容纳模型。
+image
+这只熊穿着宇航服，伸出手指向远方
+image
+这只熊穿着华丽的舞裙，双臂展开，做出优雅的舞蹈动作
+image
+这只熊穿着运动服，手里拿着篮球，单腿弯曲
+根据深度图生成图像
+
+输入图像
+输出图像
+image36
+image37
+生成一张图像，符合图1所勾勒出的深度图，并遵循以下描述：在一条街边的小巷中停放着一辆蓝色的自行车，背景中有几株从石缝中长出来的杂草
+image38
+生成一张图像，符合图1所勾勒出的深度图，并遵循以下描述：一辆红色的破旧的自行车停在一条泥泞的小路上，背景是茂密的原始森林
+根据关键点生成图像
+
+输入图像
+输出图像
+image40
+image41
+生成一张图像，符合图1所勾勒出的人体姿态，并遵循以下描述：一位身穿着汉服的中国美女，在雨中撑着油纸伞，背景是苏州园林。
+image39
+生成一张图像，符合图1所勾勒出的人体姿态，并遵循以下描述：一位男生，站在地铁站台上，他头上戴着一顶棒球帽，穿着T恤和牛仔裤。背后是飞驰而过的列车。
+文字编辑
+
+输入图像
+输出图像
+输入图像
+输出图像
+image
+image
+将拼字游戏方块上'HEALTH INSURANCE’ 替换为'明天会更好'
+image
+image
+将便条上的短语“Take a Breather”更改为“Relax and Recharge”
+输入图像
+输出图像
+image53
+image45
+将“Qwen-Image”换成黑色的滴墨字体
+image46
+将“Qwen-Image”换成黑色的手写字体
+image49
+将“Qwen-Image”换成黑色的像素字体
+image54
+将“Qwen-Image”换成红色
+image57
+将“Qwen-Image”换成蓝紫渐变色
+image59
+将“Qwen-Image”换成糖果色
+image63
+将“Qwen-Image”材质换成金属
+image64
+将“Qwen-Image”材质换成云朵
+image67
+将“Qwen-Image”材质换成玻璃
+增删改及替换
+
+能力
+输入图像
+输出图像
+新增元素
+image
+image
+在企鹅前方添加一个小型木制标牌，上面写着“Welcome to Penguin Beach”。
+删除元素
+image
+image
+删除餐盘上的头发
+替换元素
+image
+image
+把桃子变成苹果
+人像修改
+image
+image
+让她闭上眼睛
+姿态修改
+image8
+image9
+她举起双手，手掌朝向镜头，手指张开，做出一个俏皮的姿势
+视角转换
+
+输入图像
+输出图像
+输入图像
+输出图像
+image
+image
+获得正视视角
+image
+image
+朝向左侧
+image
+image
+获得后侧视角
+image
+image
+朝向右侧
+背景替换
+
+输入图像
+输出图像
+image
+image
+将背景更改为海滩
+image
+将原图背景替换为真实的现代教室场景，背景中央为一块深绿色或墨黑色的传统黑板，黑板表面用白色粉笔工整地写着中文“通义千问”
+老照片处理
+
+能力
+输入图像
+输出图像
+老照片修复及上色
+image
+image
+修复老照片，去除划痕，降低噪点，增强细节，高分辨率，画面真实，肤色自然，面部特征清晰，无变形。
+image31
+image32
+根据内容智能上色，使图像更生动
+计费与限流
+
+模型免费额度和计费单价请参见模型列表与价格。
+
+模型限流请参见通义千问（Qwen-Image）。
+
+计费说明：
+
+按成功生成的 图像张数 计费。模型调用失败或处理错误不产生任何费用，也不消耗免费额度。
+您可开启“免费额度用完即停”功能，以避免免费额度耗尽后产生额外费用。详情请参见免费额度。
+API参考
+
+API的输入输出参数，请参见通义千问-图像编辑。
+
+错误码
+
+如果模型调用失败并返回报错信息，请参见错误信息进行解决。
+
+常见问题
+
+Q：通义千问图像编辑模型支持哪些语言？
+
+A：目前正式支持简体中文和英文；其他语言可自行尝试，但效果存在不确定性。
+
+Q：上传多张不同比例的参考图时，输出图像的比例以哪张为准？
+
+A：默认情况下，输出图像会以最后一张上传的参考图的比例为准。您也可以通过设置 parameters.size 参数来自定义输出图像的尺寸。
+
+Q：如何查看模型调用量？
+
+A：模型的调用信息存在小时级延迟，在模型调用完一小时后，请在模型观测（北京或新加坡）页面，查看调用量、调用次数、成功率等指标。详情请参见账单查询与成本管理。
+
+更多问题请参见图像生成常见问题。
+
+# 图像编辑-通义万相2.5
+通义万相-图像编辑模型（wan2.5）支持多图输入（1-3张）和多图输出（1-4张），通过文本指令实现主体一致的单图编辑、目标检测与分割以及多图融合等能力。
+
+快速开始
+
+前提条件
+
+在调用前，先获取与配置 API Key，再配置API Key到环境变量。如需通过SDK进行调用，请安装DashScope SDK。
+
+示例代码
+
+单图输入与多图输入的调用方式基本一致。
+
+本示例以多图融合为例：在images数组中传入2张图像，模型将根据文本提示词输出 1 张融合后的图像。
+
+输入提示词：将图1中的闹钟放置到图2的餐桌的花瓶旁边位置。
+输入图像1
+输入图像2
+输出图像
+p1011667 (2)
+p1011669 (2)
+p1028883
+同步调用异步调用
+重要
+请确保 DashScope Python SDK 版本不低于 1.25.2， DashScope Java SDK 版本不低于 2.22.2。
+若版本过低，可能会触发 “url error, please check url!” 等错误。请参考安装或升级SDK进行更新。
+PythonJava
+本示例支持三种图像输入方式：公网URL、Base64编码、本地文件路径。
+
+请求示例
+
+ 
+import base64
+import mimetypes
+from http import HTTPStatus
+from urllib.parse import urlparse, unquote
+from pathlib import PurePosixPath
+import dashscope
+import requests
+from dashscope import ImageSynthesis
+import os
+
+# 以下为北京地域url，若使用新加坡地域的模型，需将url替换为：https://dashscope-intl.aliyuncs.com/api/v1
+dashscope.base_http_api_url = 'https://dashscope.aliyuncs.com/api/v1'
+
+# 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
+# 新加坡和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
+api_key = os.getenv("DASHSCOPE_API_KEY")
+
+# --- 输入图片：使用 Base64 编码 ---
+# base64编码格式为 data:{MIME_type};base64,{base64_data}
+def encode_file(file_path):
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if not mime_type or not mime_type.startswith("image/"):
+        raise ValueError("不支持或无法识别的图像格式")
+    with open(file_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+    return f"data:{mime_type};base64,{encoded_string}"
+
+"""
+图像输入方式说明：
+以下提供了三种图片输入方式，三选一即可
+
+1. 使用公网URL - 适合已有公开可访问的图片
+2. 使用本地文件 - 适合本地开发测试
+3. 使用Base64编码 - 适合私有图片或需要加密传输的场景
+"""
+
+# 【方式一】使用公网图片 URL
+image_url_1 = "https://img.alicdn.com/imgextra/i3/O1CN0157XGE51l6iL9441yX_!!6000000004770-49-tps-1104-1472.webp"
+image_url_2 = "https://img.alicdn.com/imgextra/i3/O1CN01SfG4J41UYn9WNt4X1_!!6000000002530-49-tps-1696-960.webp"
+
+# 【方式二】使用本地文件（支持绝对路径和相对路径）
+# 格式要求：file:// + 文件路径
+# 示例（绝对路径）：
+# image_url_1 = "file://" + "/path/to/your/image_1.png"     # Linux/macOS
+# image_url_2 = "file://" + "C:/path/to/your/image_2.png"  # Windows
+# 示例（相对路径）：
+# image_url_1 = "file://" + "./image_1.png"                 # 以实际路径为准
+# image_url_2 = "file://" + "./image_1.png"                # 以实际路径为准
+
+# 【方式三】使用Base64编码的图片
+# image_url_1 = encode_file("./image_1.png")               # 以实际路径为准
+# image_url_2 = encode_file("./image_2.png")              # 以实际路径为准
+
+print('----sync call, please wait a moment----')
+rsp = ImageSynthesis.call(api_key=api_key,
+                          model="wan2.5-i2i-preview",
+                          prompt="将图1中的闹钟放置到图2的餐桌的花瓶旁边位置",
+                          images=[image_url_1, image_url_2],
+                          negative_prompt="",
+                          n=1,
+                          # size="1280*1280",
+                          prompt_extend=True,
+                          watermark=False,
+                          seed=12345)
+print('response: %s' % rsp)
+if rsp.status_code == HTTPStatus.OK:
+    # 在当前目录下保存图片
+    for result in rsp.output.results:
+        file_name = PurePosixPath(unquote(urlparse(result.url).path)).parts[-1]
+        with open('./%s' % file_name, 'wb+') as f:
+            f.write(requests.get(result.url).content)
+else:
+    print('sync_call Failed, status_code: %s, code: %s, message: %s' %
+          (rsp.status_code, rsp.code, rsp.message))
+响应示例
+
+url 有效期24小时，请及时下载图像。
+ 
+{
+    "status_code": 200,
+    "request_id": "8ad45834-4321-44ed-adf5-xxxxxx",
+    "code": null,
+    "message": "",
+    "output": {
+        "task_id": "3aff9ebd-35fc-4339-98a3-xxxxxx",
+        "task_status": "SUCCEEDED",
+        "results": [
+            {
+                "url": "https://dashscope-result-sh.oss-cn-shanghai.aliyuncs.com/xxx.png?Expires=xxx",
+                "orig_prompt": "将图1中的闹钟放置到图2的餐桌的花瓶旁边位置",
+                "actual_prompt": "将图1中的蓝色闹钟放置在图2餐桌的花瓶右侧，靠近桌布边缘的位置，保持闹钟朝向镜头，与桌面平行，阴影自然投射于桌面。"
+            }
+        ],
+        "submit_time": "2025-10-23 16:18:16.009",
+        "scheduled_time": "2025-10-23 16:18:16.040",
+        "end_time": "2025-10-23 16:19:09.591",
+        "task_metrics": {
+            "TOTAL": 1,
+            "FAILED": 0,
+            "SUCCEEDED": 1
+        }
+    },
+    "usage": {
+        "image_count": 1
+    }
+}
+支持的模型
+
+模型列表和价格请参见通义万相通用图像编辑2.5。
+
+输入说明
+
+输入图像（images）
+
+images是一个数组，支持传入 1～3 张 图片进行编辑或融合。输入图片必须满足以下要求：
+
+图片格式：支持 JPEG、JPG、PNG （不支持透明通道）、BMP、WEBP。
+图片分辨率：图像的宽高范围均为[384, 5000]像素。
+文件大小：单张图片文件大小不得超过 10MB。
+ 
+// 以下示例仅展示 images 字段结构，输入包含 2 张图像
+{
+    "images": [
+        "https://img.alicdn.com/imgextra/i4/O1CN01TlDlJe1LR9zso3xAC_!!6000000001295-2-tps-1104-1472.png",
+        "https://img.alicdn.com/imgextra/i4/O1CN01M9azZ41YdblclkU6Z_!!6000000003082-2-tps-1696-960.png"
+    ]
+}
+图像输入顺序
+
+多图输入时，按照数组顺序定义图像顺序。因此，提示词引用的图像编号需要与图像数组中的顺序一一对应，例如：数组中的第一张图片为“图1”，第二张为“图2”，或者使用标记形式如“[图1]”、“[图2]”。
+
+输入图像
+输出图像
+image (19)-转换自-png
+图1
+image (20)-转换自-png
+图2
+04e0fc39-7ad6-41e0-9df9-1f69ac3ce825-转换自-png
+提示词：把图1移动到图2上
+36ed450d-bd54-4169-b13f-3d0f26d9d360-转换自-png
+提示词：把图2移动到图1上
+图像传入方式
+
+本模型支持通过以下三种方式传入图像：
+
+方式一：公网URL
+提供一个公网可访问的图像地址，支持 HTTP 或 HTTPS 协议。
+示例值：https://xxxx/img.png。
+适用场景：图片已托管在对象存储（如OSS）或公开图床上。
+方式二：Base64编码
+方式三：本地文件路径（仅限SDK）
+可选参数
+
+本模型还提供一些 可选参数 用于调整图像生成效果。其中重要参数包括：
+
+size：设置输出图像的分辨率，格式为宽*高，单位为像素。默认值为 1280*1280。图像分辨率总像素在 [768*768, 1280*1280] 之间，且宽高比范围为 [1:4, 4:1]。
+推荐分辨率及对应宽高比
+若未指定 size，系统将默认生成 1280*1280 像素的图像，并近似保持输入图像的宽高比：
+单图输入：宽高比与输入图像一致；
+多图输入：宽高比与最后一张输入图像一致。
+n：设置输出图像的数量。取值范围为1~4张，默认为4。测试阶段建议设置为1。
+negative_prompt：反向提示词，描述不希望在画面中出现的内容，如“模糊”、“多余的手指”等。仅用于辅助优化生成质量。
+watermark：是否添加水印标识，水印位于图片右下角，文案固定为“AI生成”。默认为 false，表示不添加水印。
+seed：随机数种子。取值范围是[0, 2147483647]。如果不提供，则算法自动生成一个随机数作为种子。如果希望生成内容保持相对稳定，可使用相同的seed参数值。
+注意：由于模型生成具有概率性，相同 seed也不能保证每次生成结果完全一致。
+输出说明
+
+图片格式：PNG。
+图像张数：1～4张。
+图像分辨率：可通过输入参数size 指定分辨率；若未指定，请参见size参数说明。
+所有输出图像将采用相同的分辨率。
+效果展示
+
+图像编辑wan2.5模型暂不支持组图生成。
+多图融合
+
+输入图像
+输出图像
+p1020900-转换自-png
+p1020802-转换自-png
+把图2的星空画作迁移到图1的手机壳上
+p1020907-转换自-png
+p1020740-转换自-png
+以[图1]的字体文字造型“Wan2.5”为唯一依据，保持笔画粗细与曲线不变；将[图2]的层叠纸材质精准迁移到文字。
+p1020909-转换自-png
+image.png
+使用两张参考图进行定向重绘：以[图2]为包包的造型与结构参考，以[图1]中的鹦鹉羽毛为颜色与纹理参考，将鹦鹉羽毛的色彩与纹理质感精准迁移到[图2]的包面材质上。
+p1020912-转换自-png
+p1020772-转换自-png
+融合[图1][图2]制作太空主题海报：让[图2]的玩偶漂浮宇宙中，双手捧起悬浮的[图1]logo；logo为发光立体紫色透明材质，具折射与体积光，光晕映照玩偶与周围微尘。背景深空星云与星尘轨迹，右上加入远景环形空间站与灯带细节，主体居中突出、留白均衡。标题置顶“通义万相发布”：几何无衬线超黑体、字距略宽、纯白主色+紫蓝外发光+细银描边；副标题其下“Unleash Your Creativity”：轻细无衬线、浅紫至青蓝渐变、微内阴影与柔光。整体紫蓝调，高分辨率，不加其他文字。
+p1020911-转换自-png
+p1020881-转换自-png
+以[图1]名片设计稿的构图与磨砂玻璃质感为模板，为[图2]人物生成竖版工作卡。圆角半透明卡面，柔和高光与浅投影；人物胸像置于中上区域；左下排版姓名/职位/公司/电话，极简无衬线字体，留白均衡。右上角放置[图1]人物的可爱3D卡通形象，打破边界半浮出卡片并投下轻影，形成层次与视觉焦点。整体明亮自然光、真实材质细节，不添加多余图案与元素。
+图像理解
+
+目标检测与定位
+
+检测图像中指定的目标，输出一张带有检测框和标签的图像。
+输入图像
+输出图像
+p1020870-转换自-png
+p1020739-转换自-png (1)
+检测图中的向日葵和南瓜，绘制检测框并标上标签
+实例分割
+
+模型将为图像中每个独立对象生成一个专属颜色区域，展示其完整轮廓。例如，输出图像的紫色区域代表被分割出的耳机实例。
+输入图像
+输出图像
+p1020871-转换自-png
+p1020872-转换自-png
+分割出图中的耳机
+主体特征保持
+
+输入图像
+输出图像
+p1020767-转换自-png
+p1020768-转换自-png
+Generate a highly detailed photo of a girl cosplaying this illustration, at Comiket. It must be a real person cosplaying. Exactly replicate the same pose, body posture, hand gestures, facial expression, and camera framing as in the original illustration. Keep the same angle, perspective, and composition, without any deviation.
+p1020761-转换自-png
+p1020759-转换自-png
+在办公室场景中生成3个同样的该照片中的人物，其中一个坐在办公桌前办公，另一个站着在喝咖啡，第三个靠在办公桌前在看书，这3个人是同一个人，都是照片中的那个人物。
+p1020799-转换自-png
+p1020756-转换自-png
+为这张照片生成一个4宫格套图，第一张让这个女孩身体正面面向镜头，第二张让她举起右手撩头发，第三组让她向屏幕前的观众热情地挥手打招呼，第四张她的表情要闭上眼微笑
+修改及放大
+
+功能
+输入图像
+输出图像
+修改元素
+image
+image
+将花卉连衣裙换成一件复古风格的蕾丝长裙，领口和袖口有精致的刺绣细节。
+修改光线
+p1020752-转换自-png
+p1020753-转换自-png
+在海星表面添加小而闪烁的高光，使其在夕阳背景下呈现出发光的效果。
+放大主体元素
+p1020744-转换自-png
+p1020742-转换自-png
+把图中的牛放大
+放大图像细节
+image (18)-转换自-png
+5eecdaf48460cde5c4be102460b058055561df7a15a7389475b8339e1c4c24831b75b38faadcd24bec177c308ebd5304b8b330b51f13ddb214325c71432889afadec7664fb1a132d34d1f46a5de9c95c9f982413966336104fb4c8ed7016461c-转换自-png
+放大并展现鹦鹉栖息的树枝
+提取元素
+
+输入图像
+输出图像
+20251029170404
+image
+将图中人物身穿的服饰单品都提取出来，摆放在白底背景中，整齐地排列。
+线稿生图
+
+输入图像
+输出图像
+p1020874-转换自-png
+p1020875-转换自-png
+Generate a new real image based on this sketch, a charming Mediterranean village scene with rustic stone buildings featuring terracotta roofs, wooden shutters, and balconies adorned with hanging laundry. The foreground is filled with lush greenery, including climbing vines and blooming flowers, creating a vibrant and lively atmosphere. The architecture showcases intricate details like arched doorways and patterned stonework, evoking a sense of history and warmth], [a bright, sunny day with clear blue skies, casting soft shadows across the cobblestone streets and enhancing the warm tones of the buildings. In the background, rolling hills and distant mountains provide a picturesque setting, adding depth and serenity to the scene.
+文字生成
+
+输入图像
+输出图像
+p1020745-转换自-png
+p1020738-转换自-png
+在图片的左上角添加大号圆角字体的白色标题文字：“微距摄影”，标题文字下面有淡绿色小号副标题：“勤劳就有收获”。
+去水印
+
+输入图像
+输出图像
+p1020805-转换自-png
+p1020743-转换自-png
+去除左上角所有文字
+扩图
+
+输入图像
+输出图像
+image (18)-转换自-png
+5eecdaf48460cde5c4be102460b058055561df7a15a7389475b8339e1c4c24831b75b38faadcd24bec177c308ebd53049e07d7fc490946139fdff014838b673b9dff828674c79200daa0c9c7ebedc8db2df6ace13bf592fa4fb4c8ed7016461c-转换自-png
+向外扩图，生成这张图的远景照片
+计费与限流
+
+模型免费额度和计费单价请参见模型列表与价格。
+模型限流请参见通义万相。
+计费说明：
+按成功生成的 图像张数 计费。仅当接口返回task_status为SUCCEEDED 并成功生成图像后，才会计费。
+模型调用失败或处理错误不产生任何费用，也不消耗免费额度。
+API参考
+
+输入和输出参数请参见通义万相-通用图像编辑2.5 API参考。
+
+常见问题
+
+Q：之前使用通用图像编辑 2.1，现在切换到 wan2.5 模型，SDK调用方式需要调整吗？
+
+A：需要调整。两个版本的参数设计不同：
+
+通用图像编辑2.1：需同时传入prompt和function参数。
+通用图像编辑2.5：仅需传入prompt，所有编辑操作通过文本指令描述，不再支持也不需要function参数。
+
+# 图像编辑-通义万相2.1
+通义万相-通用图像编辑模型支持输入文本指令，实现扩图、去水印、风格迁移、指令编辑、局部重绘、图像修复等多种图像编辑任务。
+
+重要
+本文档仅适用于“中国大陆（北京）”地域，且必须使用该地域的API Key。
+模型概览
+
+效果示例
+
+image
+原图
+image
+把她的头发修改为红色
+35779519-bfc3-4b0a-a594-d764fe9a46d83005601501
+给她戴上一副墨镜
+image
+转换成法国绘本风格
+更多示例请参见关键能力。
+模型与价格
+
+模型名称
+计费单价
+限流（主账号与RAM子账号共用）
+免费额度（查看）
+任务下发接口RPS限制
+同时处理中任务数量
+wanx2.1-imageedit
+0.14元/张
+2
+2
+500张
+快速开始
+
+前提条件
+
+在调用前，请获取API Key，再配置API Key到环境变量。如果通过DashScope SDK进行调用，还需要安装SDK。
+
+示例代码
+
+本节演示如何调用通用图像编辑 API 完成一次“局部重绘”任务。
+
+SDK 在底层封装了异步处理逻辑，上层接口表现为同步调用（即单次请求并等待最终结果返回）；而 curl 示例则对应两个独立的异步 API 接口：一个用于提交任务，另一个用于查询结果。
+PythonJavacurl
+本示例支持三种图像输入方式：公网URL、Base64编码、本地文件路径。
+
+请求示例
+
+ 
+import base64
+import os
+from http import HTTPStatus
+from dashscope import ImageSynthesis
+import mimetypes
+
+"""
+环境要求：
+    dashscope python SDK >= 1.23.8
+安装/升级SDK:
+    pip install -U dashscope
+"""
+
+# 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
+api_key = os.getenv("DASHSCOPE_API_KEY")
+
+
+# --- 辅助函数：用于 Base64 编码 ---
+# 格式为 data:{MIME_type};base64,{base64_data}
+def encode_file(file_path):
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if not mime_type or not mime_type.startswith("image/"):
+        raise ValueError("不支持或无法识别的图像格式")
+    with open(file_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+    return f"data:{mime_type};base64,{encoded_string}"
+
+"""
+图像输入方式说明：
+以下提供了三种图片输入方式，三选一即可
+
+1. 使用公网URL - 适合已有公开可访问的图片
+2. 使用本地文件 - 适合本地开发测试
+3. 使用Base64编码 - 适合私有图片或需要加密传输的场景
+"""
+
+# 【方式一】使用公网图片 URL
+mask_image_url = "http://wanx.alicdn.com/material/20250318/description_edit_with_mask_3_mask.png"
+base_image_url = "http://wanx.alicdn.com/material/20250318/description_edit_with_mask_3.jpeg"
+
+# 【方式二】使用本地文件（支持绝对路径和相对路径）
+# 格式要求：file:// + 文件路径
+# 示例（绝对路径）：
+# mask_image_url = "file://" + "/path/to/your/mask_image.png"     # Linux/macOS
+# base_image_url = "file://" + "C:/path/to/your/base_image.jpeg"  # Windows
+# 示例（相对路径）：
+# mask_image_url = "file://" + "./mask_image.png"                 # 以实际路径为准
+# base_image_url = "file://" + "./base_image.jpeg"                # 以实际路径为准
+
+# 【方式三】使用Base64编码的图片
+# mask_image_url = encode_file("./mask_image.png")               # 以实际路径为准
+# base_image_url = encode_file("./base_image.jpeg")              # 以实际路径为准
+
+
+def sample_sync_call_imageedit():
+    print('please wait...')
+    rsp = ImageSynthesis.call(api_key=api_key,
+                              model="wanx2.1-imageedit",
+                              function="description_edit_with_mask",
+                              prompt="陶瓷兔子拿着陶瓷小花",
+                              mask_image_url=mask_image_url,
+                              base_image_url=base_image_url,
+                              n=1)
+    assert rsp.status_code == HTTPStatus.OK
+
+    print('response: %s' % rsp)
+    if rsp.status_code == HTTPStatus.OK:
+        for result in rsp.output.results:
+            print("---------------------------")
+            print(result.url)
+    else:
+        print('sync_call Failed, status_code: %s, code: %s, message: %s' %
+              (rsp.status_code, rsp.code, rsp.message))
+
+
+if __name__ == '__main__':
+    sample_sync_call_imageedit()
+响应示例
+
+url 有效期24小时，请及时下载图像。
+ 
+{
+    "status_code": 200,
+    "request_id": "dc41682c-4e4a-9010-bc6f-xxxxxx",
+    "code": null,
+    "message": "",
+    "output": {
+        "task_id": "6e319d88-a07a-420c-9493-xxxxxx",
+        "task_status": "SUCCEEDED",
+        "results": [
+            {
+                "url": "https://dashscope-result-wlcb-acdr-1.oss-cn-wulanchabu-acdr-1.aliyuncs.com/xxx.png?xxxxxx"
+            }
+        ],
+        "submit_time": "2025-05-26 14:58:27.320",
+        "scheduled_time": "2025-05-26 14:58:27.339",
+        "end_time": "2025-05-26 14:58:39.170",
+        "task_metrics": {
+            "TOTAL": 1,
+            "SUCCEEDED": 1,
+            "FAILED": 0
+        }
+    },
+    "usage": {
+        "image_count": 1
+    }
+}
+关键能力
+
+通用图像编辑API 通过 function 参数来指定不同的图像编辑功能。所有功能均遵循快速开始的调用方式。
+
+下文以curl调用为例，仅列出各功能专属的 input 和 parameters JSON 片段，用于说明请求体中需配置的内容。
+
+提示：curl完整请求应包含 model、input、parameters 等顶层字段，具体结构请参考通用图像编辑API参考。
+全局风格化
+
+将整张图像迁移至指定的艺术风格。使用场景包括：绘本创作、社交媒体配图（生成符合特定视觉风格的背景或概念图）等。
+
+如何使用：将参数function设置为stylization_all。
+支持的风格：
+法国绘本风格
+金箔艺术风格
+搭配使用的参数：parameters.strength (0.0-1.0, 默认 0.5) 控制修改幅度，值越小越接近原图。
+提示词技巧：使用“转换成xx风格”的句式，如“转换成法国绘本风格”。
+请求示例
+ 
+{
+  "input": {
+    "function": "stylization_all",
+    "prompt": "转换成法国绘本风格",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/stylization_all_3.png"
+  },
+  "parameters": {
+    "strength": 0.5
+  }
+}
+输入图像
+输出图像
+提示词：转换成法国绘本风格
+提示词：转换成金箔艺术风格
+image
+image
+image
+image
+image
+image
+通过strength控制图像修改幅度
+
+通过parameters.strength参数来控制图像修改幅度。该参数为可选值，取值范围为[0.0, 1.0]，默认值为0.5。值越接近0，则越接近原图效果；值越接近1，对原图的修改幅度越大。
+
+输入提示词：转换成法国绘本风格。
+输入图像
+输出图像
+strength=0.0（最小值）
+strength=0.5（默认值）
+strength=1.0（最大值）
+image
+image
+image
+image
+局部风格化
+
+仅对图像的局部区域进行风格迁移。使用场景包括：个性化定制（如人物服装风格化）、广告设计（突出商品）。
+
+如何使用：将参数function设置为stylization_local。
+支持的风格：中英文对照如下：
+冰雕：ice
+云朵：cloud
+花灯：chinese festive lantern
+木板：wooden
+青花瓷：blue and white porcelain
+毛茸茸：fluffy
+毛线：weaving
+气球：balloon
+提示词技巧：使用“把xx变成xx风格”的句式，如“把房子变成木板风格”。
+请求示例
+ 
+{
+  "input": {
+    "function": "stylization_local",
+    "prompt": "把房子变成木板风格",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/stylization_local_1.png"
+  }
+}
+输入图像
+输出图像
+image
+ image
+冰雕
+image
+云朵
+image
+花灯
+image
+木板
+image
+青花瓷
+image
+毛茸茸
+image毛线
+image
+气球
+指令编辑
+
+无需指定区域，仅通过文本指令即可增加或修改图像内容。使用场景包括：为人物添加配饰、更换发色等无需精确定位的简单编辑。
+
+如何使用：将参数function设置为description_edit。
+搭配使用的参数：parameters.strength (0.0-1.0, 默认 0.5) 控制修改幅度，值越小越接近原图。
+提示词技巧：显式写明“添加”、“修改”这类操作描述。删除操作推荐使用局部重绘。
+请求示例
+ 
+{
+  "input": {
+    "function": "description_edit",
+    "prompt": "给小猫添加一副墨镜",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/description_edit_1.png"
+  },
+  "parameters": {
+    "strength": 0.5
+  }
+}
+能力
+输入图像
+输出图像
+添加元素
+image
+image
+给小猫添加一副墨镜。
+修改元素
+image
+image
+把她的头发修改为红色。
+通过strength控制图像修改幅度
+
+通过parameters.strength参数来控制图像修改幅度。该参数为可选值，取值范围为[0.0, 1.0]，默认值为0.5。值越接近0，则越接近原图效果；值越接近1，对原图的修改幅度越大。
+
+输入提示词：将她穿的衣服修改为彩色印花的沙滩衬衣。
+输入图像
+输出图像
+strength=0.0（最小值）
+strength=0.5（默认值）
+strength=1.0（最大值）
+image
+image
+image
+image
+局部重绘
+
+通过提供涂抹区域（mask）图像，对指定区域进行增加、修改或删除操作。使用场景包括：换装、替换物体、移除干扰物等需要精确控制范围的编辑。
+
+如何使用：将参数function设置为description_edit_with_mask。
+涂抹区域要求：需要提供 mask_image_url，涂抹图像中白色区域为待编辑区域，黑色为保留区域。
+提示词技巧：显式写明“添加”、“修改”以及描述删除后的内容这类操作描述。
+增加/修改：可描述动作（“给小狗添加一顶帽子”）或描述最终结果（“一只戴着帽子的小狗”）。
+删除：若删除对象较小，prompt 可留空 ("")；若删除对象较大，prompt 需描述删除后应出现的背景内容（如“一个透明玻璃花瓶放在桌子上”），而非“删除小熊”。
+请求示例
+ 
+{
+  "input": {
+    "function": "description_edit_with_mask",
+    "prompt": "一只陶瓷兔子抱着一朵陶瓷花",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/description_edit_with_mask_1.jpeg",
+    "mask_image_url": "http://wanx.alicdn.com/material/20250318/description_edit_with_mask_1_mask.png"
+  }
+}
+能力
+输入图像
+输入涂抹区域图像
+（白色为待编辑区域）
+输出图像
+增加元素
+image
+image
+image
+给小狗添加一顶帽子。
+提示词也可以写为“一只戴着帽子的小狗”（描述期望的图像内容）。
+修改元素
+image
+image
+image
+一只陶瓷兔子抱着一朵陶瓷花。
+提示词也可以写为“将陶瓷兔子抱着的胡萝卜换做陶瓷花”（描述动作）。
+删除元素
+image
+image
+image
+一个透明玻璃花瓶放在桌子上。
+提示词需要描述删除后的内容，不要写为“删除一只棕色的小熊”。
+去文字水印
+
+说明
+法律风险提示
+使用本功能处理受版权保护的图像（如去除他人品牌水印）可能构成侵权行为。请确保您拥有所处理图像的合法使用权，并自行承担所有相关法律责任。
+去除图像中的中英文字符或常见水印。使用场景包括：素材二次处理、广告图净化等。
+
+如何使用：将参数function设置为remove_watermark。
+提示词技巧：可使用通用指令如“去除图像中的文字”，或指定类型如“去除英文文字”。
+请求示例
+ 
+{
+  "input": {
+    "function": "remove_watermark",
+    "prompt": "去除图像中的文字",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/remove_watermark_1.png"
+  }
+}
+输入图像
+输出图像（去除图像中的文字）
+image
+image
+image
+image
+扩图
+
+沿图像的上、下、左、右四个方向按比例扩展画布，并智能填充内容。使用场景包括：调整构图、将竖图扩展为横图以适配不同媒介尺寸。
+
+如何使用：将参数function设置为expand。
+搭配使用的参数：parameters中的top_scale, bottom_scale, left_scale, right_scale 分别控制四个方向的扩展比例（如全部设置为 1.5，表示扩展为原尺寸的 1.5倍）。
+提示词技巧：描述扩展后期望看到的完整场景内容。
+请求示例
+ 
+{
+  "input": {
+    "function": "expand",
+    "prompt": "一家人在公园草坪上",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/expand_1.jpeg"
+  },
+  "parameters": {
+    "top_scale": 1.5,
+    "bottom_scale": 1.5,
+    "left_scale": 1.5,
+    "right_scale": 1.5
+  }
+}
+输入图像
+输出图像
+image
+image
+图像超分
+
+提升图像清晰度并支持放大，将低分辨率或模糊图像变得清晰。使用场景包括：老照片修复、提升素材分辨率以满足高清打印或展示需求。
+
+如何使用：将参数function设置为super_resolution。
+搭配使用的参数：parameters.upscale_factor (1-4, 默认 1) 控制放大倍数。当值为 1 时，仅提升清晰度而不放大。
+提示词技巧：可使用“图像超分”或描述图像内容。
+请求示例
+ 
+{
+  "input": {
+    "function": "super_resolution",
+    "prompt": "图像超分",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/super_resolution_1.jpeg"
+  },
+  "parameters": {
+    "upscale_factor": 2
+  }
+}
+输入图像（模糊图像）
+输出图像（清晰图像）
+image
+image
+图像上色
+
+将黑白或灰度图像转换为彩色图像（黑白/灰度 → 彩色）。使用场景包括：历史照片上色、为线稿或灰度图填充颜色。
+
+如何使用：将参数function设置为colorization。
+提示词技巧：可留空由模型自动上色，或通过提示词指定关键元素的颜色（如“蓝色背景，黄色叶子”）。
+请求示例
+ 
+{
+  "input": {
+    "function": "colorization",
+    "prompt": "蓝色背景，黄色的叶子",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/colorization_1.jpeg"
+  }
+}
+输入图像
+输出图像
+image
+image
+线稿生图（支持涂鸦作画）
+
+基于输入图像的轮廓（线稿）并结合提示词生成新图像。使用场景包括：建筑概念设计、插画设计、涂鸦作画等。
+
+如何使用：将参数function设置为doodle。
+搭配使用参数：parameters.is_sketch，用来控制模型的生成效果。
+false （默认）：输入为 RGB 图像，模型会先提取线稿再生成图像（RGB图像 → 线稿 → 新图）。
+true：输入为 RGB 图像（如涂鸦或线稿），模型将直接基于此图像生成图像（RGB图像 → 新图）。
+提示词技巧：描述期望生成的图像内容，描述越具体，生成效果越好。
+请求示例1：线稿生图
+请求示例2：涂鸦作画
+ 
+{
+  "input": {
+    "function": "doodle",
+    "prompt": "一颗树，二次元动漫风格",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/doodle_2.png"
+  },
+  "parameters": {
+    "is_sketch": true
+  }
+}
+能力
+输入图像
+输出图像
+线稿生图
+（is_sketch=false）
+image
+image
+北欧极简风格的客厅。
+涂鸦作画
+（is_sketch=true）
+image
+image
+一颗树，二次元动漫风格。
+参考卡通形象生图
+
+说明
+法律风险提示
+使用本功能处理受版权保护的卡通形象可能构成侵权行为。请确保您拥有所参考形象的合法使用权，或使用您原创的形象，并自行承担所有相关法律责任。
+如何使用：将参数function设置为control_cartoon_feature。
+提示词技巧：采用“卡通形象...”的句式，详细描述形象的动作和所处环境。
+请求示例2：涂鸦作画
+ 
+{
+  "input": {
+    "function": "control_cartoon_feature",
+    "prompt": "卡通形象小心翼翼地探出头，窥视着房间内一颗璀璨的蓝色宝石",
+    "base_image_url": "http://wanx.alicdn.com/material/20250318/control_cartoon_feature_1.png"
+  }
+}
+输入图像
+输出图像
+image
+image
+应用于生产环境
+
+最佳实践
+
+异步轮询：采轮询查询异步任务结果时，建议采用合理的轮询策略（如前30秒每3秒一次，之后拉长间隔），避免因过于频繁的请求而触发限流。
+参数调优：对于 strength 等影响效果的关键参数，建议在正式上线前进行小范围测试，找到最适合业务场景的数值。
+图像存储：API 返回的图像 URL 有效期24小时。请及时将生成的图像下载并转存到您自己的持久化存储服务中（如阿里云 OSS）。
+风险防范
+
+错误处理：对任务查询结果中的 task_status 进行判断。对于 FAILED 状态，应记录 code 和 message 以便排查。部分错误（如系统超时）可能是瞬时的，可设计重试逻辑。
+内容安全：API 会对输入和输出内容进行安全审核。若内容不合规，请求将会报错 DataInspectionFailed 错误。
+API 参考
+
+关于通义万相-通用图像编辑模型的输入与输出参数，请参见通用图像编辑API参考。
+
+计费与限流
+
+模型免费额度和计费单价请参见模型列表与价格。
+模型限流请参见通义万相。
+计费说明：
+按成功生成的 视频秒数 计费。仅当接口返回task_status为SUCCEEDED 并成功生成视频后，才会计费。
+模型调用失败或处理错误不产生任何费用，也不消耗新人免费额度。
+通用图像编辑还支持节省计划，抵扣顺序为 免费额度 > 节省计划 > 按量付费。
+错误码
+
+如果模型调用失败并返回报错信息，请参见错误信息进行解决。
+
+常见问题
+
+Q: 为什么我的任务会失败（FAILED）？
+
+A: 任务失败的常见原因包括：
+
+内容审核不通过：输入或生成的图像内容触发了安全策略。
+参数错误：请求中的参数不合法，如 function 名称错误、URL 无法访问等。
+模型内部错误：模型在处理过程中遇到预期外的问题。请检查任务查询响应中的code和error 字段，获取具体错误码和信息，以便定位问题。
+
