@@ -54,9 +54,11 @@ providers:
     enabled: true
     name: "JiMeng AI"
     base_url: "https://visual.volcengineapi.com"
-    # Authentication (Volcengine signature)
+    # Authentication for Video API (Volcengine signature)
     access_key: ""  # Your Volcengine Access Key ID
     secret_key: ""  # Your Volcengine Secret Access Key
+    # Authentication for Image API (Ark platform Bearer token)
+    ark_api_key: ""  # Your Volcengine Ark API Key (for Seedream image generation)
     region: "cn-north-1"
     service: "cv"
     # Model settings (req_key)

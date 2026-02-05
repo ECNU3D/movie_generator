@@ -22,6 +22,7 @@ from .base import (
     ImageTask,
     ImageTaskStatus,
     CharacterViewMode,
+    CharacterRef,
 )
 from ..config import get_config
 
@@ -575,6 +576,56 @@ Style: {style_hint}, high quality, detailed, professional cinematography, film s
             size=size,
             n=1,
             prompt_extend=True,
+            **kwargs
+        )
+
+    # ========== Scene Composition (Override for Tongyi-specific) ==========
+
+    def composite_character_scene(
+        self,
+        characters: List[CharacterRef],
+        scene_description: str,
+        style: str = "cinematic",
+        size: str = "1664*928",
+        background_image: Optional[str] = None,
+        n: int = 1,
+        model: Optional[str] = None,
+        prompt_extend: bool = True,
+        seed: Optional[int] = None,
+        **kwargs
+    ) -> ImageTask:
+        """
+        Compose a scene with 1-3 characters (Tongyi-specific).
+
+        Model recommendations:
+        - qwen-image-edit-max: Best character consistency, up to 6 outputs
+        - qwen-image-edit-plus: Strong character consistency, up to 4 outputs
+        - wan2.5-i2i-preview: Good multi-image fusion, up to 4 outputs
+
+        Args:
+            characters: List of 1-3 CharacterRef objects
+            scene_description: Scene/setting description
+            style: Visual style
+            size: Output image size
+            background_image: Optional background image URL
+            n: Number of output images
+            model: Model to use (default: qwen-image-edit-max)
+            prompt_extend: Enable prompt enhancement
+            seed: Random seed for reproducibility
+        """
+        if model is None:
+            model = "qwen-image-edit-max"
+
+        return super().composite_character_scene(
+            characters=characters,
+            scene_description=scene_description,
+            style=style,
+            size=size,
+            background_image=background_image,
+            n=n,
+            model=model,
+            prompt_extend=prompt_extend,
+            seed=seed,
             **kwargs
         )
 

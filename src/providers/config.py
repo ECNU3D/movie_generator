@@ -23,6 +23,7 @@ class ProviderConfig:
     api_key: str = ""
     access_key: str = ""
     secret_key: str = ""
+    ark_api_key: str = ""  # For Volcengine Ark platform (JiMeng Image/Seedream)
     region: str = ""
     service: str = ""
     model: str = ""
@@ -93,6 +94,7 @@ class Config:
             api_key=os.getenv(f"{env_prefix}_API_KEY", cfg.get("api_key", "")),
             access_key=os.getenv(f"{env_prefix}_ACCESS_KEY", cfg.get("access_key", "")),
             secret_key=os.getenv(f"{env_prefix}_SECRET_KEY", cfg.get("secret_key", "")),
+            ark_api_key=os.getenv(f"{env_prefix}_ARK_API_KEY", os.getenv("ARK_API_KEY", cfg.get("ark_api_key", ""))),
             region=cfg.get("region", ""),
             service=cfg.get("service", ""),
             model=os.getenv(f"{env_prefix}_MODEL", cfg.get("model", "")),

@@ -7,6 +7,8 @@ Streamlit app for testing image generation features:
 3. Character design:
    - Front view generation
    - Three-view generation (single image / separate images / turnaround sheet)
+4. Image editing (multi-image fusion, style transfer)
+5. Scene composition (composite 1-3 characters into scenes)
 """
 
 import os
@@ -23,18 +25,45 @@ sys.path.insert(0, str(project_root))
 from src.providers.image import (
     TongyiImageProvider,
     TONGYI_IMAGE_MODELS,
+    JiMengImageProvider,
+    JIMENG_IMAGE_MODELS,
     CharacterViewMode,
+    CharacterRef,
     ImageTaskStatus,
 )
 
 
+def get_provider_name() -> str:
+    """Get the currently selected provider name."""
+    return st.session_state.get("provider_name", "tongyi")
+
+
 def init_provider():
-    """Initialize the image provider."""
-    if "provider" not in st.session_state:
-        provider = TongyiImageProvider()
+    """Initialize the selected image provider."""
+    provider_name = get_provider_name()
+    cache_key = f"provider_{provider_name}"
+
+    if cache_key not in st.session_state:
+        if provider_name == "jimeng":
+            provider = JiMengImageProvider()
+        else:
+            provider = TongyiImageProvider()
         provider.initialize()
-        st.session_state.provider = provider
-    return st.session_state.provider
+        st.session_state[cache_key] = provider
+
+    return st.session_state[cache_key]
+
+
+def get_current_models() -> dict:
+    """Get models dict for the current provider."""
+    if get_provider_name() == "jimeng":
+        return JIMENG_IMAGE_MODELS
+    return TONGYI_IMAGE_MODELS
+
+
+def is_jimeng() -> bool:
+    """Check if JiMeng provider is currently selected."""
+    return get_provider_name() == "jimeng"
 
 
 def download_image(url: str, save_dir: str = "./output/images") -> str:
@@ -57,8 +86,14 @@ def text_to_image_page():
     """Text-to-Image generation page."""
     st.header("🎨 文生图 Text-to-Image")
 
-    # Model selection
-    t2i_models = {k: v for k, v in TONGYI_IMAGE_MODELS.items() if v.model_type == "t2i"}
+    all_models = get_current_models()
+
+    # Model selection - for Tongyi filter t2i only, for JiMeng all models are t2i
+    if is_jimeng():
+        t2i_models = all_models
+    else:
+        t2i_models = {k: v for k, v in all_models.items() if v.model_type == "t2i"}
+
     model = st.selectbox(
         "选择模型",
         options=list(t2i_models.keys()),
@@ -66,7 +101,7 @@ def text_to_image_page():
     )
 
     # Get supported sizes for selected model
-    model_info = TONGYI_IMAGE_MODELS[model]
+    model_info = all_models[model]
     sizes = model_info.sizes
 
     col1, col2 = st.columns(2)
@@ -82,16 +117,33 @@ def text_to_image_page():
         height=100,
     )
 
-    negative_prompt = st.text_input(
-        "反向提示词 (Negative Prompt)",
-        placeholder="描述不想出现的内容...",
-    )
+    # Provider-specific options
+    negative_prompt = None
+    extra_kwargs = {}
 
-    col1, col2 = st.columns(2)
-    with col1:
-        prompt_extend = st.checkbox("智能提示词增强", value=True)
-    with col2:
-        watermark = st.checkbox("添加水印", value=False)
+    if is_jimeng():
+        col1, col2 = st.columns(2)
+        with col1:
+            optimize = st.selectbox(
+                "提示词优化",
+                options=["standard", "fast", "无"],
+                format_func=lambda x: {"standard": "标准优化", "fast": "快速优化", "无": "不优化"}.get(x, x),
+            )
+            if optimize != "无":
+                extra_kwargs["optimize_prompt"] = optimize
+        with col2:
+            watermark = st.checkbox("添加水印", value=False)
+    else:
+        negative_prompt = st.text_input(
+            "反向提示词 (Negative Prompt)",
+            placeholder="描述不想出现的内容...",
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            prompt_extend = st.checkbox("智能提示词增强", value=True)
+            extra_kwargs["prompt_extend"] = prompt_extend
+        with col2:
+            watermark = st.checkbox("添加水印", value=False)
 
     if st.button("🚀 生成图像", type="primary", disabled=not prompt):
         provider = init_provider()
@@ -104,14 +156,13 @@ def text_to_image_page():
                     size=size,
                     n=n,
                     model=model,
-                    prompt_extend=prompt_extend,
                     watermark=watermark,
+                    **extra_kwargs,
                 )
 
                 if task.is_successful():
                     st.success(f"✅ 生成成功！共 {len(task.image_urls)} 张图像")
 
-                    # Display images
                     cols = st.columns(min(len(task.image_urls), 4))
                     for i, url in enumerate(task.image_urls):
                         with cols[i % 4]:
@@ -120,7 +171,6 @@ def text_to_image_page():
                                 filepath = download_image(url)
                                 st.success(f"已保存到: {filepath}")
 
-                    # Store in session for later use
                     st.session_state.last_generated = task.image_urls
                 else:
                     st.error(f"❌ 生成失败: {task.error_message}")
@@ -222,12 +272,19 @@ def frame_generation_page():
 
         with st.spinner("正在生成帧图像..."):
             try:
-                task = provider.generate_frame(
-                    prompt=prompt,
-                    character_reference=character_ref,
-                    size=size,
-                    style=style,
-                )
+                if character_ref:
+                    task = provider.generate_frame_with_character(
+                        prompt=prompt,
+                        character_reference=character_ref,
+                        size=size,
+                        style=style,
+                    )
+                else:
+                    task = provider.generate_frame(
+                        prompt=prompt,
+                        size=size,
+                        style=style,
+                    )
 
                 if task.is_successful():
                     st.success("✅ 帧生成成功！")
@@ -438,14 +495,16 @@ def image_editing_page():
     - 风格迁移
     """)
 
-    # Image input
-    st.subheader("输入图像 (最多3张)")
+    # Image input - JiMeng supports up to 14, Tongyi up to 3
+    max_images = 14 if is_jimeng() else 3
+    st.subheader(f"输入图像 (最多{max_images}张)")
 
     images = []
-    cols = st.columns(3)
+    num_slots = min(max_images, 6)  # Show up to 6 slots in UI
+    slot_cols = st.columns(min(num_slots, 3))
 
-    for i in range(3):
-        with cols[i]:
+    for i in range(num_slots):
+        with slot_cols[i % 3]:
             st.markdown(f"**图像 {i+1}**")
             source = st.radio(
                 f"来源",
@@ -470,8 +529,12 @@ def image_editing_page():
                     images.append(url)
                     st.image(url, width=150)
 
-    # Edit model
-    edit_models = {k: v for k, v in TONGYI_IMAGE_MODELS.items() if v.model_type == "edit"}
+    # Edit model - for JiMeng all models support editing, for Tongyi filter edit type
+    all_models = get_current_models()
+    if is_jimeng():
+        edit_models = all_models
+    else:
+        edit_models = {k: v for k, v in all_models.items() if v.model_type == "edit"}
     model = st.selectbox(
         "编辑模型",
         options=list(edit_models.keys()),
@@ -520,6 +583,253 @@ def image_editing_page():
                 st.error(f"❌ 错误: {str(e)}")
 
 
+def scene_composition_page():
+    """Scene composition page - composite characters into scenes."""
+    st.header("🎭 场景合成 Scene Composition")
+
+    max_chars = 14 if is_jimeng() else 3
+    st.markdown(f"""
+    将角色合成到指定场景中，保持角色外貌一致性。
+    - 每个角色需要一张**正面参考图**
+    - 当前 Provider 最多支持 **{max_chars}** 个角色
+    - 角色数较少时可额外添加背景参考图
+    """)
+
+    # Number of characters
+    char_options = list(range(1, min(max_chars, 6) + 1))
+    num_chars = st.radio(
+        "角色数量",
+        options=char_options,
+        horizontal=True,
+    )
+
+    # Character slots
+    st.subheader("角色设定")
+    characters_data = []
+
+    for i in range(num_chars):
+        with st.expander(f"角色 {i+1}", expanded=True):
+            col_name, col_pos = st.columns(2)
+            with col_name:
+                name = st.text_input(
+                    "角色名称",
+                    value=f"角色{i+1}",
+                    key=f"sc_name_{i}",
+                )
+            with col_pos:
+                position = st.selectbox(
+                    "位置",
+                    options=["", "左侧", "中间", "右侧", "画面中央"],
+                    key=f"sc_pos_{i}",
+                )
+
+            action = st.text_input(
+                "动作描述",
+                placeholder="例如：微笑着看向镜头、正在递给对方一本书...",
+                key=f"sc_action_{i}",
+            )
+
+            # Image source
+            ref_source = st.radio(
+                "参考图来源",
+                options=["上传图片", "输入URL", "使用之前的角色设计"],
+                horizontal=True,
+                key=f"sc_source_{i}",
+            )
+
+            image_url = None
+            if ref_source == "上传图片":
+                uploaded = st.file_uploader(
+                    "上传正面参考图",
+                    type=["png", "jpg", "jpeg"],
+                    key=f"sc_upload_{i}",
+                )
+                if uploaded:
+                    temp_path = f"./output/temp_scene_char_{i}_{uploaded.name}"
+                    os.makedirs("./output", exist_ok=True)
+                    with open(temp_path, "wb") as f:
+                        f.write(uploaded.getvalue())
+                    image_url = temp_path
+                    st.image(uploaded, width=150)
+
+            elif ref_source == "输入URL":
+                image_url = st.text_input(
+                    "角色正面图URL",
+                    key=f"sc_url_{i}",
+                )
+                if image_url:
+                    st.image(image_url, width=150)
+
+            elif ref_source == "使用之前的角色设计":
+                prev_images = []
+                if "character_front" in st.session_state:
+                    prev_images.append(st.session_state.character_front)
+                if "last_generated" in st.session_state:
+                    prev_images.extend(st.session_state.last_generated)
+                if prev_images:
+                    image_url = st.selectbox(
+                        "选择图片",
+                        options=prev_images,
+                        key=f"sc_prev_{i}",
+                    )
+                    if image_url:
+                        st.image(image_url, width=150)
+                else:
+                    st.warning("没有可用的之前生成的图片")
+
+            characters_data.append({
+                "name": name,
+                "image_url": image_url,
+                "action": action,
+                "position": position,
+            })
+
+    # Scene description
+    st.subheader("场景设定")
+    scene_description = st.text_area(
+        "场景描述",
+        placeholder="描述场景的环境、氛围、光线等...\n例如：安静的图书馆内，背景是整齐的书架，温暖的灯光",
+        height=100,
+    )
+
+    # Background image (only when characters <= 2)
+    background_image = None
+    if num_chars <= 2:
+        use_bg = st.checkbox("添加背景参考图")
+        if use_bg:
+            bg_source = st.radio(
+                "背景图来源",
+                options=["上传", "URL"],
+                horizontal=True,
+                key="sc_bg_source",
+            )
+            if bg_source == "上传":
+                bg_uploaded = st.file_uploader(
+                    "上传背景图",
+                    type=["png", "jpg", "jpeg"],
+                    key="sc_bg_upload",
+                )
+                if bg_uploaded:
+                    bg_path = f"./output/temp_scene_bg_{bg_uploaded.name}"
+                    os.makedirs("./output", exist_ok=True)
+                    with open(bg_path, "wb") as f:
+                        f.write(bg_uploaded.getvalue())
+                    background_image = bg_path
+                    st.image(bg_uploaded, width=200)
+            else:
+                background_image = st.text_input("背景图URL", key="sc_bg_url")
+                if background_image:
+                    st.image(background_image, width=200)
+
+    # Generation settings
+    st.subheader("生成设置")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        all_models = get_current_models()
+        if is_jimeng():
+            sc_models = all_models
+        else:
+            sc_models = {k: v for k, v in all_models.items() if v.model_type == "edit"}
+        sc_model_keys = list(sc_models.keys())
+        default_idx = 0
+        if "qwen-image-edit-max" in sc_models:
+            default_idx = sc_model_keys.index("qwen-image-edit-max")
+        model = st.selectbox(
+            "模型",
+            options=sc_model_keys,
+            index=default_idx,
+            format_func=lambda x: f"{x}",
+            key="sc_model",
+        )
+    with col2:
+        if is_jimeng():
+            sc_sizes = all_models[model].sizes
+        else:
+            sc_sizes = ["1664*928", "1280*720", "1024*1024", "928*1664"]
+        size = st.selectbox(
+            "输出尺寸",
+            options=sc_sizes,
+            format_func=lambda x: {
+                "1664*928": "1664x928 (16:9)",
+                "1280*720": "1280x720 (16:9)",
+                "1024*1024": "1024x1024 (1:1)",
+                "928*1664": "928x1664 (9:16)",
+            }.get(x, x),
+            key="sc_size",
+        )
+    with col3:
+        n = st.slider("生成数量", min_value=1, max_value=4, value=2, key="sc_n")
+
+    style = st.selectbox(
+        "视觉风格",
+        options=["cinematic", "realistic", "anime", "artistic", "dramatic"],
+        format_func=lambda x: {
+            "cinematic": "电影风格",
+            "realistic": "写实风格",
+            "anime": "动漫风格",
+            "artistic": "艺术风格",
+            "dramatic": "戏剧风格",
+        }.get(x, x),
+        key="sc_style",
+    )
+
+    # Validate and generate
+    all_chars_ready = all(d["image_url"] for d in characters_data)
+    can_generate = all_chars_ready and scene_description
+
+    if not all_chars_ready:
+        st.warning("请为每个角色提供参考图片")
+
+    if st.button("🎭 合成场景", type="primary", disabled=not can_generate):
+        provider = init_provider()
+
+        # Build CharacterRef list
+        characters = []
+        for d in characters_data:
+            characters.append(CharacterRef(
+                name=d["name"],
+                image_url=d["image_url"],
+                action=d["action"],
+                position=d["position"],
+            ))
+
+        with st.spinner("正在合成场景...（可能需要较长时间）"):
+            try:
+                task = provider.composite_character_scene(
+                    characters=characters,
+                    scene_description=scene_description,
+                    style=style,
+                    size=size,
+                    background_image=background_image,
+                    n=n,
+                    model=model,
+                )
+
+                if task.is_successful():
+                    st.success(f"✅ 场景合成成功！共 {len(task.image_urls)} 张图像")
+
+                    cols = st.columns(min(len(task.image_urls), 4))
+                    for i, url in enumerate(task.image_urls):
+                        with cols[i % 4]:
+                            st.image(url, caption=f"场景 {i+1}")
+
+                    st.session_state.last_generated = task.image_urls
+
+                    # Download all
+                    if st.button("💾 下载全部场景图", key="sc_download"):
+                        for i, url in enumerate(task.image_urls):
+                            filepath = download_image(url, "./output/scenes")
+                            st.success(f"已保存: {filepath}")
+                else:
+                    st.error(f"❌ 合成失败: {task.error_message}")
+
+            except ValueError as e:
+                st.error(f"❌ 参数错误: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ 错误: {str(e)}")
+
+
 def main():
     st.set_page_config(
         page_title="AI 图像生成测试",
@@ -528,11 +838,22 @@ def main():
     )
 
     st.title("🎨 AI 图像生成测试")
-    st.markdown("测试 Tongyi Image Provider 的各项功能")
+    st.markdown("测试图像生成 Provider 的各项功能")
 
-    # Sidebar - connection test
+    # Sidebar - provider selection and settings
     with st.sidebar:
         st.header("⚙️ 设置")
+
+        # Provider selector
+        provider_name = st.selectbox(
+            "图像 Provider",
+            options=["tongyi", "jimeng"],
+            format_func=lambda x: {
+                "tongyi": "通义 (Tongyi)",
+                "jimeng": "即梦 Seedream (JiMeng)",
+            }.get(x, x),
+            key="provider_name",
+        )
 
         if st.button("🔌 测试连接"):
             provider = init_provider()
@@ -544,18 +865,23 @@ def main():
 
         st.divider()
         st.markdown("### 可用模型")
-        for name, info in TONGYI_IMAGE_MODELS.items():
+        current_models = get_current_models()
+        for name, info in current_models.items():
             with st.expander(name):
                 st.markdown(f"**{info.description}**")
                 st.markdown(f"- 类型: {info.model_type}")
-                st.markdown(f"- 同步: {'✅' if info.sync_supported else '❌'}")
+                if hasattr(info, "sync_supported"):
+                    st.markdown(f"- 同步: {'✅' if info.sync_supported else '❌'}")
+                if hasattr(info, "max_input_images"):
+                    st.markdown(f"- 最大输入图片: {info.max_input_images}")
 
     # Main content - tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🎨 文生图",
         "🎬 帧生成",
         "👤 角色设计",
         "✏️ 图像编辑",
+        "🎭 场景合成",
     ])
 
     with tab1:
@@ -569,6 +895,9 @@ def main():
 
     with tab4:
         image_editing_page()
+
+    with tab5:
+        scene_composition_page()
 
 
 if __name__ == "__main__":

@@ -90,6 +90,23 @@ class ImageSize(Enum):
 
 
 @dataclass
+class CharacterRef:
+    """A character reference for scene composition."""
+    name: str           # Character name/label (e.g., "小明", "Alice")
+    image_url: str      # Front-view reference image URL or local path
+    action: str = ""    # What the character is doing (e.g., "向女主角挥手")
+    position: str = ""  # Optional spatial hint (e.g., "左侧", "中间")
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "image_url": self.image_url,
+            "action": self.action,
+            "position": self.position,
+        }
+
+
+@dataclass
 class ImageTask:
     """Represents an image generation task."""
     task_id: str
@@ -583,6 +600,70 @@ Style: {style_hint}, high quality, detailed, film still."""
             **kwargs
         )
 
+    # ========== Scene Composition Methods ==========
+
+    def composite_character_scene(
+        self,
+        characters: List[CharacterRef],
+        scene_description: str,
+        style: str = "cinematic",
+        size: str = "1664*928",
+        background_image: Optional[str] = None,
+        n: int = 1,
+        **kwargs
+    ) -> ImageTask:
+        """
+        Compose a scene with 1-3 characters from their reference images.
+
+        Each character's front-view reference image is passed as an input image.
+        The prompt references characters as 图1, 图2, 图3 and describes
+        the scene setting plus each character's action.
+
+        Args:
+            characters: List of 1-3 CharacterRef objects
+            scene_description: Description of the scene/setting/background
+            style: Visual style (cinematic, realistic, anime, etc.)
+            size: Output image size (default 16:9 for cinematic)
+            background_image: Optional background/scene image URL (only used
+                             when len(characters) <= 2, since API max is 3 images)
+            n: Number of output images
+            **kwargs: Provider-specific parameters (model, seed, etc.)
+
+        Returns:
+            ImageTask with composed scene image(s)
+
+        Raises:
+            ValueError: If characters list is empty or exceeds 3
+        """
+        if not characters or len(characters) > 3:
+            raise ValueError(
+                f"Must provide 1-3 characters, got {len(characters) if characters else 0}"
+            )
+
+        # Build image list: characters first, then optional background
+        images = [c.image_url for c in characters]
+
+        use_bg = background_image and len(images) < 3
+        if use_bg:
+            images.append(background_image)
+
+        # Build prompt
+        prompt = self._build_scene_composition_prompt(
+            characters=characters,
+            scene_description=scene_description,
+            style=style,
+            has_background_image=bool(use_bg),
+            total_images=len(images),
+        )
+
+        return self.edit_image(
+            images=images,
+            prompt=prompt,
+            size=size,
+            n=n,
+            **kwargs
+        )
+
     # ========== Legacy Methods (for backward compatibility) ==========
 
     def generate_character_views(
@@ -639,6 +720,57 @@ Style: {style_hint}, high quality, detailed, film still."""
             )
 
     # ========== Prompt Building Methods ==========
+
+    def _build_scene_composition_prompt(
+        self,
+        characters: List[CharacterRef],
+        scene_description: str,
+        style: str,
+        has_background_image: bool,
+        total_images: int,
+    ) -> str:
+        """Build prompt for multi-character scene composition."""
+        style_hint = self.STYLE_HINTS.get(style, style)
+
+        # Build character reference section
+        char_parts = []
+        for i, char in enumerate(characters):
+            img_label = f"图{i + 1}"
+            parts = [f"- {img_label}中的人物是「{char.name}」"]
+            if char.position:
+                parts.append(f"位于{char.position}")
+            if char.action:
+                parts.append(char.action)
+            char_parts.append("，".join(parts))
+        char_section = "\n".join(char_parts)
+
+        # Background reference
+        bg_section = ""
+        if has_background_image:
+            bg_idx = len(characters) + 1
+            bg_section = f"\n场景背景参考图{bg_idx}中的环境。"
+
+        # Interaction hint for multi-character
+        interaction_hint = ""
+        if len(characters) == 2:
+            interaction_hint = "\n两个角色之间应有自然的空间关系和互动感。"
+        elif len(characters) == 3:
+            interaction_hint = "\n三个角色应合理布局在画面中，保持自然的空间关系。"
+
+        prompt = f"""将以下角色组合到同一场景中，保持每个角色的外貌特征与参考图完全一致。
+
+角色参考:
+{char_section}
+
+场景设定: {scene_description}{bg_section}{interaction_hint}
+
+要求:
+- 保持每个角色的面部特征、发型、服装与其参考图一致
+- 所有角色出现在同一个连贯的场景中
+- 构图协调，光影统一
+- 风格: {style_hint}"""
+
+        return prompt
 
     def _build_single_view_prompt(
         self,

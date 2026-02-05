@@ -26,6 +26,7 @@ from .video.hailuo import HailuoProvider
 # Image providers
 from .image.base import ImageProvider, ImageTask, ImageTaskStatus, CharacterViewMode, ImageSize
 from .image.tongyi import TongyiImageProvider
+from .image.jimeng import JiMengImageProvider
 
 __all__ = [
     # Base - Video
@@ -47,6 +48,7 @@ __all__ = [
     "ImageSize",
     # Image providers
     "TongyiImageProvider",
+    "JiMengImageProvider",
 ]
 
 
@@ -68,9 +70,11 @@ def get_provider(name: str) -> VideoProvider:
 def get_image_provider(name: str):
     """Get an image provider instance by name."""
     from .image.tongyi import TongyiImageProvider
+    from .image.jimeng import JiMengImageProvider
 
     providers = {
         "tongyi": TongyiImageProvider,
+        "jimeng": JiMengImageProvider,
     }
 
     if name not in providers:

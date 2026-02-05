@@ -37,10 +37,12 @@ from .base import (
     ImageTask,
     ImageTaskStatus,
     CharacterViewMode,
+    CharacterRef,
     ArtStyle,
     ImageSize,
 )
 from .tongyi import TongyiImageProvider, TONGYI_IMAGE_MODELS
+from .jimeng import JiMengImageProvider, JIMENG_IMAGE_MODELS
 
 __all__ = [
     # Base classes
@@ -48,9 +50,12 @@ __all__ = [
     "ImageTask",
     "ImageTaskStatus",
     "CharacterViewMode",
+    "CharacterRef",
     "ArtStyle",
     "ImageSize",
     # Providers
     "TongyiImageProvider",
     "TONGYI_IMAGE_MODELS",
+    "JiMengImageProvider",
+    "JIMENG_IMAGE_MODELS",
 ]

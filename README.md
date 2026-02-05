@@ -23,9 +23,10 @@
 
 ## 支持的图像平台
 
-| 平台 | 文生图 | 图像编辑 | 角色设计 | 帧生成 |
-|------|:------:|:--------:|:--------:|:------:|
-| 通义 (Tongyi/DashScope) | ✅ | ✅ | ✅ | ✅ |
+| 平台 | 文生图 | 图像编辑 | 角色设计 | 帧生成 | 场景合成 |
+|------|:------:|:--------:|:--------:|:------:|:--------:|
+| 通义 (Tongyi/DashScope) | ✅ | ✅ | ✅ | ✅ | ✅ (最多3角色) |
+| 即梦 Seedream (JiMeng/Ark) | ✅ | ✅ | ✅ | ✅ | ✅ (最多14角色) |
 
 ### 角色设计功能
 
@@ -35,6 +36,7 @@
 | 三视图生成 | 生成侧面/正面/背面三张独立图片 |
 | 单张三视图 | 一张图包含三个视角 |
 | 角色设定图 | 游戏风格的多角度转面图 |
+| 场景合成 | 将1-3个角色合成到指定场景中，保持外貌一致性 |
 
 详细文档: [Image Provider](docs/IMAGE_PROVIDER.md)
 
@@ -134,7 +136,7 @@ movie_generator/
 │   ├── agents/           # 多 Agent 系统
 │   ├── providers/        # AI 生成 Provider
 │   │   ├── video/        # 视频生成 (Kling, Hailuo, Jimeng, Tongyi)
-│   │   └── image/        # 图像生成 (Tongyi)
+│   │   └── image/        # 图像生成 (Tongyi, JiMeng)
 │   ├── skills/           # Agent 技能系统
 │   └── mcp_servers/      # MCP 服务器
 ├── api/                  # FastAPI 后端
@@ -155,6 +157,12 @@ python scripts/test_image_provider.py
 
 # Image Provider 角色视图测试
 python scripts/test_character_views.py
+
+# Image Provider 场景合成测试
+python scripts/test_scene_composition.py
+
+# JiMeng Seedream 图像测试
+python scripts/test_jimeng_image.py
 
 # Agent 单元测试
 python scripts/test_agents.py
