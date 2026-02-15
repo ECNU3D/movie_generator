@@ -612,6 +612,11 @@ PROMPT_TEMPLATE_INFO = {
         "description": "可灵(Kling)平台的提示词风格指南",
         "variables": []
     },
+    "platform_guide_kling_dialogue": {
+        "name": "可灵3.0对白模式指南",
+        "description": "可灵3.0 Omni多镜头对白模式的提示词风格指南",
+        "variables": []
+    },
     "platform_guide_tongyi": {
         "name": "通义万相平台提示词指南",
         "description": "通义万相平台的提示词风格指南",

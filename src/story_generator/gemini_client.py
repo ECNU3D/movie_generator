@@ -192,6 +192,9 @@ class GeminiClient:
             "platform_guide_kling": {
                 "template": self._get_platform_guide("kling")
             },
+            "platform_guide_kling_dialogue": {
+                "template": self._get_platform_guide("kling_dialogue")
+            },
             "platform_guide_tongyi": {
                 "template": self._get_platform_guide("tongyi")
             },
@@ -203,7 +206,7 @@ class GeminiClient:
             },
         }
 
-    def _get_platform_guide(self, platform: str) -> str:
+    def _get_platform_guide(self, platform: str, dialogue_mode: bool = False) -> str:
         """获取平台提示词指南"""
         guides = {
             "kling": """【可灵 Kling 提示词风格】
@@ -211,6 +214,18 @@ class GeminiClient:
 - 支持通过<<<image_1>>>等引用图片
 - 格式: [主体] + [动作] + [场景] + [风格] + [镜头]
 - 示例: 一位年轻女子在樱花树下微笑，春日午后，柔和的阳光，电影级画质，中景镜头""",
+
+            "kling_dialogue": """【可灵 Kling 3.0 对白模式提示词风格】
+- 支持多镜头叙事，单次生成最长15秒
+- 使用 @角色名 引用主体，角色名需与主体库中的名称一致
+- 格式: 镜头X，Xs，[景别]，[场景描述]，@角色 说，"对白内容"
+- 对白使用中文双引号 ""，说/问 后加逗号
+- 示例:
+  镜头1，2s，中景，@Mike 和 @Cindy 面对面坐在老式绿皮火车的座位上，@Mike 问，"我们要去哪里？"
+  镜头2，3s，特写 @Cindy 的正脸，她说，"我们要去一个四季如夏的地方。"
+  镜头3，2s，切远景，两人面对面，对视微笑。
+- 每个镜头时长建议2-5秒，总时长不超过15秒
+- 支持切镜、运镜指令如：切镜、特写、俯拍、侧面等""",
 
             "tongyi": """【通义万相 Tongyi 提示词风格】
 - 支持中文，描述要清晰具体
@@ -885,7 +900,8 @@ class GeminiClient:
         platform: str,
         character_context: str,
         style: str,
-        prompt_type: str = "t2v"  # t2v, i2v_first, i2v_last, i2v, i2v_fl
+        prompt_type: str = "t2v",  # t2v, i2v_first, i2v_last, i2v, i2v_fl, kling_dialogue
+        dialogue_mode: bool = False  # Kling 3.0 对白模式
     ) -> str:
         """
         为指定平台生成视频提示词
@@ -901,11 +917,17 @@ class GeminiClient:
                 - i2v_last: 尾帧图片提示词
                 - i2v: 图生视频提示词（仅首帧）
                 - i2v_fl: 图生视频提示词（首尾帧）
+                - kling_dialogue: 可灵3.0对白模式
+            dialogue_mode: 是否启用对白模式（仅对可灵平台有效）
         """
         self._current_method_name = "generate_video_prompt"
 
+        # 判断是否使用对白模式
+        use_dialogue_mode = dialogue_mode and platform == "kling"
+        platform_key = "kling_dialogue" if use_dialogue_mode else platform
+
         # 尝试从数据库获取平台指南
-        platform_guide_template = self._get_template(f"platform_guide_{platform}")
+        platform_guide_template = self._get_template(f"platform_guide_{platform_key}")
         if platform_guide_template:
             platform_guide = platform_guide_template
         else:
@@ -916,6 +938,18 @@ class GeminiClient:
 - 支持通过<<<image_1>>>等引用图片
 - 格式: [主体] + [动作] + [场景] + [风格] + [镜头]
 - 示例: 一位年轻女子在樱花树下微笑，春日午后，柔和的阳光，电影级画质，中景镜头""",
+
+                "kling_dialogue": """【可灵 Kling 3.0 对白模式提示词风格】
+- 支持多镜头叙事，单次生成最长15秒
+- 使用 @角色名 引用主体，角色名需与主体库中的名称一致
+- 格式: 镜头X，Xs，[景别]，[场景描述]，@角色 说，"对白内容"
+- 对白使用中文双引号 ""，说/问 后加逗号
+- 示例:
+  镜头1，2s，中景，@Mike 和 @Cindy 面对面坐在老式绿皮火车的座位上，@Mike 问，"我们要去哪里？"
+  镜头2，3s，特写 @Cindy 的正脸，她说，"我们要去一个四季如夏的地方。"
+  镜头3，2s，切远景，两人面对面，对视微笑。
+- 每个镜头时长建议2-5秒，总时长不超过15秒
+- 支持切镜、运镜指令如：切镜、特写、俯拍、侧面等""",
 
                 "tongyi": """【通义万相 Tongyi 提示词风格】
 - 支持中文，描述要清晰具体
@@ -935,7 +969,7 @@ class GeminiClient:
 - 格式: 场景描述 + [运镜指令]
 - 示例: 女孩站在海边，望向远方的夕阳 [推进]，海风吹动她的长发 [右摇]"""
             }
-            platform_guide = platform_guides.get(platform, "使用清晰详细的中文描述")
+            platform_guide = platform_guides.get(platform_key, "使用清晰详细的中文描述")
 
         # 镜头运动映射到海螺指令
         hailuo_camera_map = {
@@ -997,6 +1031,24 @@ class GeminiClient:
 - 描述动作、运动轨迹、情感变化等
 - 确保过渡流畅合理，不要描述与首尾帧矛盾的内容"""
 
+        # Kling 3.0 对白模式特殊处理
+        if use_dialogue_mode:
+            extra_instruction = """
+【可灵 3.0 对白模式特别注意】
+这是可灵3.0多镜头对白模式提示词。请按照以下格式生成：
+- 使用 @角色名 引用角色（从人物上下文中提取角色名）
+- 每个镜头格式: 镜头X，Xs，[景别]，[场景描述]，@角色 说/问，"对白内容"
+- 如果镜头有对白，必须使用 说/问 + 逗号 + 中文双引号格式
+- 如果没有对白，可以只描述画面和动作
+- 保持镜头之间的连贯性和节奏感
+- 总时长控制在镜头duration秒左右（最长15秒）
+
+【对白格式示例】
+镜头1，3s，中景，咖啡厅内，@小明 坐在窗边，看着窗外的雨，@小明 说，"今天的雨好大。"
+镜头2，2s，特写，@小红 端着咖啡走过来，她微笑着说，"雨天最适合喝咖啡了。"
+镜头3，3s，中景，两人对视微笑，阳光从云层透出，照在他们身上。"""
+            type_instruction = "生成可灵3.0多镜头对白模式提示词（包含角色对白和镜头切换）"
+
         prompt = f"""你是一位专业的AI视频生成提示词工程师。请为以下镜头{type_instruction}。
 
 【镜头信息】
@@ -1056,6 +1108,78 @@ class GeminiClient:
                     prompt_type=prompt_type
                 )
         return results
+
+    def generate_multishot_dialogue_prompt(
+        self,
+        shots: List[Shot],
+        character_context: str,
+        style: str,
+        max_duration: int = 15
+    ) -> str:
+        """
+        为多个镜头生成可灵3.0多镜头对白提示词
+
+        Args:
+            shots: 镜头列表（按顺序）
+            character_context: 人物上下文
+            style: 风格描述
+            max_duration: 最大总时长（可灵3.0最长15秒）
+
+        Returns:
+            可灵3.0格式的多镜头对白提示词
+        """
+        self._current_method_name = "generate_multishot_dialogue_prompt"
+
+        # 计算总时长
+        total_duration = sum(shot.duration for shot in shots)
+        if total_duration > max_duration:
+            # 需要调整时长
+            scale = max_duration / total_duration
+            for shot in shots:
+                shot.duration = max(2, int(shot.duration * scale))
+            total_duration = sum(shot.duration for shot in shots)
+
+        # 构建镜头信息
+        shots_info = ""
+        for i, shot in enumerate(shots, 1):
+            shot_type_name = SHOT_TYPE_NAMES.get(shot.shot_type, shot.shot_type)
+            shots_info += f"""
+【镜头{i}】
+- 景别: {shot_type_name}
+- 时长: {shot.duration}秒
+- 画面: {shot.visual_description}
+- 对白: {shot.dialogue if shot.dialogue else "无"}
+- 运镜: {CAMERA_MOVEMENT_NAMES.get(shot.camera_movement, shot.camera_movement)}
+"""
+
+        prompt = f"""你是一位专业的AI视频生成提示词工程师。请将以下分镜脚本转换为可灵3.0多镜头对白模式提示词。
+
+【可灵3.0多镜头格式要求】
+- 使用 @角色名 引用角色（从人物上下文中提取角色名）
+- 每个镜头格式: 镜头X，Xs，[景别]，[场景描述]，@角色 说/问，"对白内容"
+- 对白使用中文双引号 ""，说/问 后加逗号
+- 如果镜头没有对白，只描述画面和动作
+- 支持运镜指令如：切镜、特写、俯拍、侧面、跟随等
+- 总时长不超过{max_duration}秒
+
+【人物信息】
+{character_context}
+
+【风格要求】
+{style}
+
+【分镜脚本】
+共{len(shots)}个镜头，预计总时长{total_duration}秒
+{shots_info}
+
+【输出格式示例】
+镜头1，3s，中景，咖啡厅内，@小明 坐在窗边，看着窗外的雨，@小明 说，"今天的雨好大。"
+镜头2，2s，特写，@小红 端着咖啡走过来，她微笑着说，"雨天最适合喝咖啡了。"
+镜头3，3s，切远景，两人对视微笑，阳光从云层透出。
+
+请直接输出可灵3.0格式的提示词，每个镜头一行，不要其他说明。"""
+
+        return self._generate(prompt, temperature=0.7).strip()
 
     # ==================== 人物事件更新 ====================
 

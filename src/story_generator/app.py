@@ -655,6 +655,78 @@ def page_storyboard():
             st.rerun()
         return
 
+    # 可灵 3.0 多镜头对白模式
+    with st.expander("🎬 可灵 3.0 多镜头对白模式", expanded=False):
+        st.markdown("""
+        **多镜头对白模式说明:**
+        - 将多个分镜合并为一个可灵3.0多镜头提示词
+        - 支持角色对白、镜头切换、运镜控制
+        - 单次生成最长15秒
+        - 使用 @角色名 引用主体
+        """)
+
+        # 选择要包含的镜头
+        col1, col2 = st.columns(2)
+        with col1:
+            start_shot = st.number_input(
+                "起始镜头",
+                min_value=1,
+                max_value=len(episode.shots),
+                value=1,
+                key="dialogue_start_shot"
+            )
+        with col2:
+            end_shot = st.number_input(
+                "结束镜头",
+                min_value=start_shot,
+                max_value=len(episode.shots),
+                value=min(start_shot + 2, len(episode.shots)),
+                key="dialogue_end_shot"
+            )
+
+        # 计算选中镜头的总时长
+        selected_shots = episode.shots[start_shot-1:end_shot]
+        total_selected_duration = sum(s.duration for s in selected_shots)
+        st.info(f"已选择 {len(selected_shots)} 个镜头，总时长: {total_selected_duration}秒" +
+                (" ⚠️ 超过15秒限制" if total_selected_duration > 15 else ""))
+
+        if st.button("🎬 生成多镜头对白提示词", type="primary"):
+            character_context = project.get_all_characters_context()
+            gemini.set_context(project_id=project_id)
+
+            with st.spinner("正在生成可灵3.0多镜头对白提示词..."):
+                try:
+                    dialogue_prompt = gemini.generate_multishot_dialogue_prompt(
+                        shots=selected_shots,
+                        character_context=character_context,
+                        style=project.style,
+                        max_duration=15
+                    )
+
+                    st.success("生成成功！")
+                    st.subheader("可灵 3.0 多镜头对白提示词")
+                    st.code(dialogue_prompt, language=None)
+
+                    # 保存到session state供复制
+                    st.session_state.last_dialogue_prompt = dialogue_prompt
+
+                    # 复制区域
+                    st.text_area(
+                        "复制提示词",
+                        value=dialogue_prompt,
+                        height=150,
+                        key="copy_dialogue_prompt"
+                    )
+                except Exception as e:
+                    st.error(f"生成失败: {e}")
+
+        # 显示上次生成的提示词
+        if "last_dialogue_prompt" in st.session_state:
+            if st.checkbox("显示上次生成的提示词"):
+                st.code(st.session_state.last_dialogue_prompt, language=None)
+
+    st.divider()
+
     # 分镜列表
     for i, shot in enumerate(episode.shots):
         with st.expander(
@@ -819,6 +891,24 @@ def page_generate_prompts():
     with col2:
         use_first_frame = st.checkbox("首帧图片", value=False, help="生成首帧图片提示词")
 
+    # Kling 3.0 对白模式
+    st.divider()
+    st.subheader("🎬 可灵 3.0 对白模式")
+    use_dialogue_mode = st.checkbox(
+        "启用对白模式 (Kling 3.0)",
+        value=False,
+        help="生成带角色对白的多镜头叙事提示词，适用于可灵3.0 Omni模型"
+    )
+
+    if use_dialogue_mode:
+        st.info("""
+**可灵 3.0 对白模式说明:**
+- 支持多镜头叙事，单次生成最长15秒
+- 使用 @角色名 引用主体（需在可灵中创建对应主体）
+- 格式示例: `镜头1，3s，中景，@小明 说，"对白内容"`
+- 自动从分镜的对白字段提取台词
+        """)
+
     # 尾帧只有在选了首帧时才能选择
     use_last_frame = False
     if use_first_frame:
@@ -855,8 +945,10 @@ def page_generate_prompts():
         # 设置上下文
         gemini.set_context(project_id=project_id)
 
+        # 计算总任务数（对白模式只对可灵平台生效）
+        dialogue_count = 1 if use_dialogue_mode and use_kling else 0
         progress = st.progress(0)
-        total = len(platforms) * len(prompt_types)
+        total = len(platforms) * len(prompt_types) + dialogue_count
         current = 0
 
         results = {}
@@ -870,11 +962,28 @@ def page_generate_prompts():
                         platform=platform,
                         character_context=character_context,
                         style=project.style,
-                        prompt_type=ptype
+                        prompt_type=ptype,
+                        dialogue_mode=False  # 普通模式
                     )
                     results[key] = prompt
                     current += 1
                     progress.progress(current / total)
+
+        # 如果启用了对白模式，额外生成可灵对白提示词
+        if use_dialogue_mode and use_kling:
+            with st.spinner("生成可灵 3.0 对白模式提示词..."):
+                key = "kling_dialogue"
+                prompt = gemini.generate_video_prompt(
+                    shot=shot,
+                    platform="kling",
+                    character_context=character_context,
+                    style=project.style,
+                    prompt_type="t2v",
+                    dialogue_mode=True  # 对白模式
+                )
+                results[key] = prompt
+                current += 1
+                progress.progress(current / total)
 
         # 保存到镜头
         shot.generated_prompts.update(results)
@@ -901,7 +1010,8 @@ def page_generate_prompts():
                 "i2v_first": "首帧图片",
                 "i2v_last": "尾帧图片",
                 "i2v": "图生视频(首帧)",
-                "i2v_fl": "图生视频(首尾帧)"
+                "i2v_fl": "图生视频(首尾帧)",
+                "dialogue": "对白模式(3.0)"
             }
 
             with st.expander(f"{platform_names.get(platform, platform)} - {type_names.get(ptype, ptype)}", expanded=True):
@@ -1001,7 +1111,8 @@ def _get_prompt_type_names(prompt_types: list) -> list:
         "i2v_first": "首帧图片",
         "i2v_last": "尾帧图片",
         "i2v": "图生视频(首帧)",
-        "i2v_fl": "图生视频(首尾帧)"
+        "i2v_fl": "图生视频(首尾帧)",
+        "dialogue": "对白模式(3.0)"
     }
     return [names.get(pt, pt) for pt in prompt_types]
 
@@ -1009,11 +1120,15 @@ def _get_prompt_type_names(prompt_types: list) -> list:
 def _parse_prompt_key(key: str) -> tuple:
     """
     解析提示词 key 格式
-    格式: platform_prompttype (如 kling_t2v, kling_i2v_first, kling_i2v_fl)
+    格式: platform_prompttype (如 kling_t2v, kling_i2v_first, kling_i2v_fl, kling_dialogue)
 
     Returns:
         (platform, prompt_type)
     """
+    # 特殊处理 kling_dialogue 格式
+    if key == "kling_dialogue":
+        return ("kling", "dialogue")
+
     platforms = ["kling", "tongyi", "jimeng", "hailuo"]
     for platform in platforms:
         if key.startswith(platform + "_"):
